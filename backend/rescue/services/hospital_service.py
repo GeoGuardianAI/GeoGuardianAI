@@ -12,26 +12,14 @@ implementations later.
 from __future__ import annotations
 
 from typing import List
-import math
 
 from backend.rescue.models.hospital import Hospital
+from backend.rescue.utils.geo import haversine_km
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate great-circle distance between two points using Haversine.
-
-    Returns distance in kilometers.
-    """
-    # convert decimal degrees to radians
-    rlat1, rlon1, rlat2, rlon2 = map(math.radians, (lat1, lon1, lat2, lon2))
-
-    dlat = rlat2 - rlat1
-    dlon = rlon2 - rlon1
-
-    a = math.sin(dlat / 2) ** 2 + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlon / 2) ** 2
-    c = 2 * math.asin(math.sqrt(a))
-    earth_radius_km = 6371.0
-    return earth_radius_km * c
+    """Backward-compatible wrapper for the shared Haversine distance helper."""
+    return haversine_km(lat1, lon1, lat2, lon2)
 
 
 # Deterministic, realistic mock hospitals (U.S. cities) for local testing.
@@ -122,6 +110,6 @@ def get_nearest_hospital(latitude: float, longitude: float) -> Hospital:
     # find the hospital with the minimum Haversine distance
     nearest = min(
         _HOSPITALS,
-        key=lambda h: _haversine_km(latitude, longitude, h.latitude, h.longitude),
+        key=lambda h: haversine_km(latitude, longitude, h.latitude, h.longitude),
     )
     return nearest
