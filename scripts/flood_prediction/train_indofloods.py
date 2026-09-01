@@ -169,10 +169,19 @@ if best_model_name == "Random Forest":
 # SAVE MODEL
 # ==================================================
 
+# Save trained model
 joblib.dump(
     best_model,
     "models/flood_prediction_model.pkl"
 )
 
+# Save feature names used during training
+joblib.dump(
+    list(X_train.columns),
+    "models/flood_prediction_features.pkl"
+)
+
 print("\nModel saved successfully.")
 print("Location: models/flood_prediction_model.pkl")
+print("Feature list saved.")
+print("Location: models/flood_prediction_features.pkl")
