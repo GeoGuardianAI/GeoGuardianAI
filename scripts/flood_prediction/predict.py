@@ -53,11 +53,21 @@ def predict_flood(input_data: dict):
         else "Flood"
     )
 
-    return {
-        "severity": severity,
-        "probability": round(float(probability), 4)
-    }
+    risk_score = round(probability * 100)
 
+    if risk_score >= 70:
+        risk_level = "HIGH"
+    elif risk_score >= 40:
+        risk_level = "MEDIUM"
+    else:
+        risk_level = "LOW"
+
+    return {
+    "severity": severity,
+    "probability": float(round(probability, 4)),
+    "risk_score": risk_score,
+    "risk_level": risk_level
+}
 
 # ==================================================
 # TEST BLOCK

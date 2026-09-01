@@ -25,3 +25,12 @@ def predict(data: FloodInput):
     result = predict_flood(data.dict())
 
     return result
+
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy",
+        "service": "flood-prediction",
+        "model": "Random Forest",
+        "version": "1.0"
+    }
