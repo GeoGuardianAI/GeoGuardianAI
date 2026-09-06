@@ -5,6 +5,7 @@ from backend.rescue.api.emergency_resources import router as emergency_resources
 from backend.rescue.api.emergency_vehicles import router as emergency_vehicles_router
 from backend.rescue.api.hospitals import router as hospitals_router
 from backend.rescue.api.resources import router as resource_router
+from backend.rescue.api.risk_priority import router as risk_priority_router
 from backend.rescue.api.routes import router as routes_router
 from backend.rescue.api.rescue_teams import router as rescue_teams_router
 from backend.rescue.api.shelters import router as shelters_router
@@ -19,6 +20,7 @@ app.include_router(emergency_vehicles_router)
 app.include_router(emergency_resources_router)
 app.include_router(deployment_router)
 app.include_router(resource_router)
+app.include_router(risk_priority_router)
 app.include_router(routes_router)
 app.include_router(rescue_teams_router)
 app.include_router(shelters_router)
