@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.rescue.api.deployment import router as deployment_router
 from backend.rescue.api.emergency_resources import router as emergency_resources_router
@@ -13,6 +14,14 @@ from backend.rescue.api.shelters import router as shelters_router
 app = FastAPI(
     title="GeoGuardian AI - Resource Management API",
     version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(hospitals_router)
