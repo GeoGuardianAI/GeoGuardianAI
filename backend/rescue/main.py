@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from backend.rescue.api.deployment import router as deployment_router
 from backend.rescue.api.emergency_resources import router as emergency_resources_router
 from backend.rescue.api.emergency_vehicles import router as emergency_vehicles_router
 from backend.rescue.api.hospitals import router as hospitals_router
@@ -16,6 +17,7 @@ app = FastAPI(
 app.include_router(hospitals_router)
 app.include_router(emergency_vehicles_router)
 app.include_router(emergency_resources_router)
+app.include_router(deployment_router)
 app.include_router(resource_router)
 app.include_router(routes_router)
 app.include_router(rescue_teams_router)
