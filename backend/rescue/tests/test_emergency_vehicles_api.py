@@ -12,17 +12,17 @@ def test_available_vehicle_returns_vehicle_data() -> None:
     response = client.get("/available-vehicle")
 
     assert response.status_code == 200
-    assert response.json()["vehicle_id"] == "ambulance-ny-01"
+    assert response.json()["vehicle_id"] == "ambulance-blr-01"
     assert response.json()["status"] == "AVAILABLE"
 
 
 def test_nearest_vehicle_returns_vehicle_data() -> None:
     response = client.get(
-        "/nearest-vehicle", params={"latitude": 40.7128, "longitude": -74.0060}
+        "/nearest-vehicle", params={"latitude": 12.9716, "longitude": 77.5946}
     )
 
     assert response.status_code == 200
-    assert response.json()["vehicle_id"] == "ambulance-ny-01"
+    assert response.json()["vehicle_id"] == "ambulance-blr-01"
 
 
 def test_vehicle_type_filtering_returns_requested_type() -> None:

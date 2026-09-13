@@ -14,9 +14,9 @@ def test_available_vehicles_are_returned() -> None:
 
 
 def test_nearest_available_vehicle_is_returned() -> None:
-    vehicle = emergency_vehicle_service.get_nearest_available_vehicle(40.7128, -74.0060)
+    vehicle = emergency_vehicle_service.get_nearest_available_vehicle(12.9716, 77.5946)
 
-    assert vehicle.vehicle_id == "ambulance-ny-01"
+    assert vehicle.vehicle_id == "ambulance-blr-01"
 
 
 def test_unavailable_vehicles_are_ignored() -> None:

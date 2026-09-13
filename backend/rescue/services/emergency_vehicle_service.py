@@ -14,15 +14,15 @@ from backend.rescue.models.emergency_vehicle import (
 from backend.rescue.utils.geo import haversine_km
 
 
-# Deterministic, realistic mock emergency vehicles for local testing.
+# Deterministic, realistic Bengaluru-area mock emergency vehicles for local testing.
 # The list order is used as a stable tie-breaker when distances match.
 _VEHICLES: list[EmergencyVehicle] = [
     EmergencyVehicle(
-        vehicle_id="ambulance-ny-01",
-        registration_number="NY-EMS-101",
+        vehicle_id="ambulance-blr-01",
+        registration_number="KA-01-EM-101",
         vehicle_type=VehicleType.AMBULANCE,
-        latitude=40.7128,
-        longitude=-74.0060,
+        latitude=12.9716,
+        longitude=77.5946,
         status=VehicleStatus.AVAILABLE,
         capacity=4,
     ),
