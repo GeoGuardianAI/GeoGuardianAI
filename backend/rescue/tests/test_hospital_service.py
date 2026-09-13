@@ -13,21 +13,21 @@ from backend.rescue.services import hospital_service
 
 
 def test_get_nearest_hospital_returns_hospital_instance() -> None:
-    result = hospital_service.get_nearest_hospital(40.7, -74.0)
+    result = hospital_service.get_nearest_hospital(12.9716, 77.5946)
     assert isinstance(result, Hospital)
 
 
 def test_get_nearest_hospital_returns_correct_nearest_hospital() -> None:
-    result = hospital_service.get_nearest_hospital(40.730610, -73.935242)
-    assert result.hospital_id == "nyc-central"
+    result = hospital_service.get_nearest_hospital(12.9716, 77.5946)
+    assert result.hospital_id == "blr-central-test"
 
 
 def test_get_nearest_hospital_returns_different_hospitals_for_different_locations() -> None:
-    first = hospital_service.get_nearest_hospital(40.730610, -73.935242)
-    second = hospital_service.get_nearest_hospital(34.0522, -118.2437)
+    first = hospital_service.get_nearest_hospital(12.9716, 77.5946)
+    second = hospital_service.get_nearest_hospital(12.9698, 77.7499)
     assert first.hospital_id != second.hospital_id
-    assert first.hospital_id == "nyc-central"
-    assert second.hospital_id == "la-metro"
+    assert first.hospital_id == "blr-central-test"
+    assert second.hospital_id == "blr-whitefield-test"
 
 
 @pytest.mark.parametrize("latitude", [-90.1, 90.1])

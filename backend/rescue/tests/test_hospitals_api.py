@@ -17,18 +17,18 @@ def test_health_endpoint_returns_ok() -> None:
 
 
 def test_nearest_hospital_returns_hospital_data() -> None:
-    response = client.get("/nearest-hospital", params={"latitude": 40.7128, "longitude": -74.0060})
+    response = client.get("/nearest-hospital", params={"latitude": 12.9716, "longitude": 77.5946})
     assert response.status_code == 200
 
     data = response.json()
-    assert data["hospital_id"] == "nyc-central"
-    assert data["name"] == "New York Central Hospital"
-    assert data["latitude"] == 40.7128
-    assert data["longitude"] == -74.006
+    assert data["hospital_id"] == "blr-central-test"
+    assert data["name"] == "Bengaluru Central Care Hospital (Mock)"
+    assert data["latitude"] == 12.9716
+    assert data["longitude"] == 77.5946
     assert data["bed_capacity"] == 500
-    assert data["available_beds"] == 50
+    assert data["available_beds"] == 120
     assert data["icu_capacity"] == 50
-    assert data["available_icu"] == 5
+    assert data["available_icu"] == 12
     assert data["emergency_available"] is True
 
 
