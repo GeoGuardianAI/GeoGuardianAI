@@ -73,6 +73,9 @@ function App() {
   const [resources, setResources] = useState([])
   const [resourcesLoading, setResourcesLoading] = useState(true)
   const [resourcesError, setResourcesError] = useState('')
+  const [vehicles, setVehicles] = useState([])
+  const [vehiclesLoading, setVehiclesLoading] = useState(true)
+  const [vehiclesError, setVehiclesError] = useState('')
   const [missions, setMissions] = useState([])
   const [missionsLoading, setMissionsLoading] = useState(true)
   const [missionsError, setMissionsError] = useState('')
@@ -137,6 +140,24 @@ function App() {
       }
     }
 
+    const fetchVehicles = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:8000/available-vehicle')
+
+        if (!response.ok) {
+          throw new Error(`Vehicle request failed with status ${response.status}`)
+        }
+
+        const data = await response.json()
+        setVehicles([data])
+      } catch (error) {
+        setVehicles([])
+        setVehiclesError(error instanceof Error ? error.message : 'Unable to load emergency vehicles.')
+      } finally {
+        setVehiclesLoading(false)
+      }
+    }
+
     const fetchMissions = async () => {
       try {
         const response = await fetch('http://127.0.0.1:8000/missions')
@@ -164,6 +185,7 @@ function App() {
     fetchHospitals()
     fetchTeams()
     fetchResources()
+    fetchVehicles()
     fetchMissions()
   }, [])
 
