@@ -121,6 +121,11 @@ def get_mission(mission_id: str) -> Mission:
         raise ValueError(f"Mission '{mission_id}' does not exist") from exc
 
 
+def list_missions() -> list[Mission]:
+    """Return all stored missions in insertion order."""
+    return list(_MISSIONS.values())
+
+
 def update_mission_status(
     mission_id: str,
     new_status: MissionStatus | str,

@@ -193,6 +193,23 @@ def test_created_mission_can_be_retrieved_with_get_mission() -> None:
     assert fetched == created
 
 
+def test_list_missions_returns_missions_in_insertion_order() -> None:
+    first = mission_service.create_mission(
+        team_id="rescue-ny-01",
+        disaster_id="disaster-01",
+        destination_latitude=40.7128,
+        destination_longitude=-74.0060,
+    )
+    second = mission_service.create_mission(
+        team_id="rescue-chi-01",
+        disaster_id="disaster-02",
+        destination_latitude=41.8781,
+        destination_longitude=-87.6298,
+    )
+
+    assert mission_service.list_missions() == [first, second]
+
+
 def test_creating_mission_updates_team_current_mission_id() -> None:
     mission = mission_service.create_mission(
         team_id="rescue-ny-01",

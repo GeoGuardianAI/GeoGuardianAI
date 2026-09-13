@@ -200,6 +200,22 @@ def test_get_mission_returns_created_mission() -> None:
     assert response.json()["mission_id"] == created["mission_id"]
 
 
+def test_list_missions_returns_created_missions_in_order() -> None:
+    first_response = client.post("/mission", json=_valid_payload())
+    second_response = client.post(
+        "/mission",
+        json=_valid_payload(team_id="rescue-chi-01", disaster_id="disaster-002"),
+    )
+
+    response = client.get("/missions")
+
+    assert response.status_code == 200
+    assert [mission["mission_id"] for mission in response.json()] == [
+        first_response.json()["mission_id"],
+        second_response.json()["mission_id"],
+    ]
+
+
 def test_get_mission_unknown_id_returns_http_404() -> None:
     response = client.get("/mission/unknown-mission-id")
     assert response.status_code == 404

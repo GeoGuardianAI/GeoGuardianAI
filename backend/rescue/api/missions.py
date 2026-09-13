@@ -4,7 +4,12 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from backend.rescue.models.mission import Mission, MissionPriority, MissionStatus
-from backend.rescue.services.mission_service import create_mission, get_mission, update_mission_status
+from backend.rescue.services.mission_service import (
+    create_mission,
+    get_mission,
+    list_missions,
+    update_mission_status,
+)
 
 router = APIRouter()
 
@@ -44,6 +49,17 @@ class MissionStatusUpdateRequest(BaseModel):
     """Request payload for updating a rescue mission status."""
 
     status: MissionStatus = Field(..., description="New lifecycle status for the mission")
+
+
+@router.get(
+    "/missions",
+    response_model=list[Mission],
+    summary="List rescue missions",
+    tags=["Missions"],
+)
+def list_missions_endpoint() -> list[Mission]:
+    """Return all stored rescue missions."""
+    return list_missions()
 
 
 @router.post(

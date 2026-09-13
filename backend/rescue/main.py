@@ -5,6 +5,7 @@ from backend.rescue.api.deployment import router as deployment_router
 from backend.rescue.api.emergency_resources import router as emergency_resources_router
 from backend.rescue.api.emergency_vehicles import router as emergency_vehicles_router
 from backend.rescue.api.hospitals import router as hospitals_router
+from backend.rescue.api.missions import router as missions_router
 from backend.rescue.api.resources import router as resource_router
 from backend.rescue.api.risk_priority import router as risk_priority_router
 from backend.rescue.api.routes import router as routes_router
@@ -25,6 +26,7 @@ app.add_middleware(
 )
 
 app.include_router(hospitals_router)
+app.include_router(missions_router)
 app.include_router(emergency_vehicles_router)
 app.include_router(emergency_resources_router)
 app.include_router(deployment_router)
