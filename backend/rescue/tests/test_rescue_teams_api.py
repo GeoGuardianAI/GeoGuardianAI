@@ -8,17 +8,17 @@ client = TestClient(app)
 
 
 def test_available_team_with_valid_coordinates_returns_http_200() -> None:
-    response = client.get("/available-team", params={"latitude": 40.7128, "longitude": -74.0060})
+    response = client.get("/available-team", params={"latitude": 12.9716, "longitude": 77.5946})
     assert response.status_code == 200
 
 
 def test_response_is_a_list() -> None:
-    response = client.get("/available-team", params={"latitude": 40.7128, "longitude": -74.0060})
+    response = client.get("/available-team", params={"latitude": 12.9716, "longitude": 77.5946})
     assert isinstance(response.json(), list)
 
 
 def test_returned_objects_contain_expected_rescue_team_fields() -> None:
-    response = client.get("/available-team", params={"latitude": 40.7128, "longitude": -74.0060})
+    response = client.get("/available-team", params={"latitude": 12.9716, "longitude": 77.5946})
     data = response.json()
 
     assert data
@@ -35,14 +35,14 @@ def test_returned_objects_contain_expected_rescue_team_fields() -> None:
         "current_mission_id",
     }
     assert first["team_id"] == "rescue-ny-01"
-    assert first["name"] == "New York Mountain Rescue"
+    assert first["name"] == "Bengaluru Central Mountain Rescue"
     assert first["availability"] == "AVAILABLE"
 
 
 def test_specialization_filtering_works() -> None:
     response = client.get(
         "/available-team",
-        params={"latitude": 40.7128, "longitude": -74.0060, "specialization": "search"},
+        params={"latitude": 12.9716, "longitude": 77.5946, "specialization": "search"},
     )
     assert response.status_code == 200
 
@@ -52,12 +52,12 @@ def test_specialization_filtering_works() -> None:
 
 
 def test_invalid_latitude_returns_422() -> None:
-    response = client.get("/available-team", params={"latitude": 90.1, "longitude": -74.0060})
+    response = client.get("/available-team", params={"latitude": 90.1, "longitude": 77.5946})
     assert response.status_code == 422
 
 
 def test_invalid_longitude_returns_422() -> None:
-    response = client.get("/available-team", params={"latitude": 40.7128, "longitude": -180.1})
+    response = client.get("/available-team", params={"latitude": 12.9716, "longitude": -180.1})
     assert response.status_code == 422
 
 
@@ -67,14 +67,14 @@ def test_missing_latitude_returns_422() -> None:
 
 
 def test_missing_longitude_returns_422() -> None:
-    response = client.get("/available-team", params={"latitude": 40.7128})
+    response = client.get("/available-team", params={"latitude": 12.9716})
     assert response.status_code == 422
 
 
 def test_no_matching_specialization_returns_empty_list() -> None:
     response = client.get(
         "/available-team",
-        params={"latitude": 40.7128, "longitude": -74.0060, "specialization": "nonexistent"},
+        params={"latitude": 12.9716, "longitude": 77.5946, "specialization": "nonexistent"},
     )
     assert response.status_code == 200
     assert response.json() == []
