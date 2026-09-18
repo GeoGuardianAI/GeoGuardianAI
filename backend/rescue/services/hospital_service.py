@@ -83,6 +83,11 @@ _HOSPITALS: List[Hospital] = [
 ]
 
 
+def get_hospitals() -> List[Hospital]:
+    """Return all hospitals in the in-memory collection."""
+    return _HOSPITALS
+
+
 def get_nearest_hospital(latitude: float, longitude: float) -> Hospital:
     """Return the nearest Hospital to the given coordinates.
 

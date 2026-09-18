@@ -12,6 +12,13 @@ from backend.rescue.models.hospital import Hospital
 from backend.rescue.services import hospital_service
 
 
+def test_get_hospitals_returns_all_mock_hospitals_as_hospital_instances() -> None:
+    result = hospital_service.get_hospitals()
+
+    assert len(result) == 5
+    assert all(isinstance(hospital, Hospital) for hospital in result)
+
+
 def test_get_nearest_hospital_returns_hospital_instance() -> None:
     result = hospital_service.get_nearest_hospital(12.9716, 77.5946)
     assert isinstance(result, Hospital)
