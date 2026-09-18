@@ -130,6 +130,29 @@ def check_available_quantity(resource_id: str, requested_quantity: int) -> bool:
     return resource.available_quantity >= requested_quantity
 
 
+def allocate_resource(resource_id: str, quantity: int) -> EmergencyResource:
+    """Decrease and return the requested resource inventory quantity."""
+    if (
+        not isinstance(quantity, int)
+        or isinstance(quantity, bool)
+        or quantity <= 0
+    ):
+        raise ValueError("requested_quantity must be a positive integer")
+
+    resource = next(
+        (item for item in _RESOURCES if item.resource_id == resource_id),
+        None,
+    )
+    if resource is None:
+        raise ValueError("no suitable resource available")
+
+    if quantity > resource.available_quantity:
+        raise ValueError("requested quantity exceeds available quantity")
+
+    resource.available_quantity -= quantity
+    return resource
+
+
 def _validate_coordinates(latitude: float, longitude: float) -> None:
     """Validate a geographic coordinate pair for inventory lookups."""
     if not (-90.0 <= latitude <= 90.0):

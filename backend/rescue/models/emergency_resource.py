@@ -17,6 +17,13 @@ class ResourceType(str, Enum):
     TEMPORARY_SHELTER_SUPPLIES = "TEMPORARY_SHELTER_SUPPLIES"
 
 
+class ResourceAllocationRequest(BaseModel):
+    """Represents a request to allocate inventory from a resource."""
+
+    resource_id: str = Field(..., min_length=1, description="Resource identifier")
+    quantity: int = Field(..., gt=0, description="Quantity to allocate (> 0)")
+
+
 class EmergencyResource(BaseModel):
     """Represents an emergency resource and its available inventory quantity."""
 

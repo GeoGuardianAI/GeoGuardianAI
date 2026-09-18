@@ -6,6 +6,17 @@ from backend.rescue.models.emergency_resource import ResourceType
 from backend.rescue.services import emergency_resource_service
 
 
+@pytest.fixture(autouse=True)
+def restore_resource_quantities() -> None:
+    original_quantities = {
+        resource.resource_id: resource.available_quantity
+        for resource in emergency_resource_service._RESOURCES
+    }
+    yield
+    for resource in emergency_resource_service._RESOURCES:
+        resource.available_quantity = original_quantities[resource.resource_id]
+
+
 def test_available_resources_are_returned() -> None:
     resources = emergency_resource_service.get_available_resources()
 
@@ -66,6 +77,28 @@ def test_available_quantity_is_checked() -> None:
     assert not emergency_resource_service.check_available_quantity(
         "resource-food-ny-01", 5000
     )
+
+
+def test_allocate_resource_decreases_available_quantity() -> None:
+    resource = emergency_resource_service.allocate_resource("resource-food-ny-01", 100)
+
+    assert resource.available_quantity == 3100
+
+
+def test_allocate_unknown_resource_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="no suitable resource available"):
+        emergency_resource_service.allocate_resource("unknown-resource", 1)
+
+
+@pytest.mark.parametrize("quantity", [0, -1])
+def test_allocate_non_positive_quantity_raises_value_error(quantity: int) -> None:
+    with pytest.raises(ValueError, match="requested_quantity must be a positive integer"):
+        emergency_resource_service.allocate_resource("resource-food-ny-01", quantity)
+
+
+def test_allocate_quantity_greater_than_available_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="requested quantity exceeds available quantity"):
+        emergency_resource_service.allocate_resource("resource-food-ny-01", 3201)
 
 
 def test_unknown_resource_raises_value_error() -> None:

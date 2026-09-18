@@ -2,10 +2,31 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from backend.rescue.models.emergency_resource import EmergencyResource, ResourceType
+from backend.rescue.models.emergency_resource import (
+    EmergencyResource,
+    ResourceAllocationRequest,
+    ResourceType,
+)
 from backend.rescue.services import emergency_resource_service
 
 router = APIRouter()
+
+
+@router.post(
+    "/allocate-resource-inventory",
+    response_model=EmergencyResource,
+    summary="Allocate emergency resource inventory",
+)
+def allocate_resource_inventory(request: ResourceAllocationRequest) -> EmergencyResource:
+    """Allocate inventory quantity from the requested resource."""
+    try:
+        return emergency_resource_service.allocate_resource(
+            request.resource_id, request.quantity
+        )
+    except ValueError as exc:
+        if str(exc) == "no suitable resource available":
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get(
