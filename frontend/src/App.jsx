@@ -108,14 +108,14 @@ function App() {
   useEffect(() => {
     const fetchHospitals = async () => {
       try {
-        const response = await fetch('http://127.0.0.1:8000/nearest-hospital?latitude=12.9716&longitude=77.5946')
+        const response = await fetch('http://127.0.0.1:8000/hospitals')
 
         if (!response.ok) {
           throw new Error(`Hospital request failed with status ${response.status}`)
         }
 
-        const hospital = await response.json()
-        setHospitals([hospital])
+        const data = await response.json()
+        setHospitals(data)
       } catch (error) {
         setHospitalsError(error instanceof Error ? error.message : 'Unable to load nearby hospitals.')
       } finally {
