@@ -3,9 +3,15 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.rescue.models.hospital import Hospital
-from backend.rescue.services.hospital_service import get_nearest_hospital
+from backend.rescue.services.hospital_service import get_hospitals, get_nearest_hospital
 
 router = APIRouter()
+
+
+@router.get("/hospitals", response_model=list[Hospital])
+def hospitals() -> list[Hospital]:
+    """Return all hospitals."""
+    return get_hospitals()
 
 
 @router.get(

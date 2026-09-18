@@ -7,6 +7,38 @@ from backend.rescue.main import app
 client = TestClient(app)
 
 
+def test_hospitals_returns_all_bengaluru_mock_hospitals() -> None:
+    response = client.get("/hospitals")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert {hospital["hospital_id"] for hospital in data} == {
+        "blr-central-test",
+        "blr-whitefield-test",
+        "blr-yelahanka-test",
+        "blr-electronic-city-test",
+        "blr-rajajinagar-test",
+    }
+
+
+def test_hospitals_returns_expected_hospital_fields() -> None:
+    response = client.get("/hospitals")
+
+    assert response.status_code == 200
+    expected_fields = {
+        "hospital_id",
+        "name",
+        "latitude",
+        "longitude",
+        "bed_capacity",
+        "available_beds",
+        "icu_capacity",
+        "available_icu",
+        "emergency_available",
+    }
+    assert all(set(hospital) == expected_fields for hospital in response.json())
+
+
 def test_health_endpoint_returns_ok() -> None:
     response = client.get("/health")
     assert response.status_code == 200
