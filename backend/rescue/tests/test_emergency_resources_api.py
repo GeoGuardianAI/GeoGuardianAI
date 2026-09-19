@@ -8,6 +8,7 @@ from backend.rescue.services import emergency_resource_service
 import backend.rescue.services.mission_service as mission_service
 import backend.rescue.services.rescue_team_service as rescue_team_service
 from backend.rescue.api import emergency_resources
+from backend.rescue.models.allocation import ResourceAllocationStatus
 from backend.rescue.main import app
 
 client = TestClient(app)
@@ -109,6 +110,122 @@ def _mission_allocation_payload(**overrides: object) -> dict[str, object]:
     }
     payload.update(overrides)
     return payload
+
+
+def _create_allocation() -> str:
+    response = client.post(
+        "/allocate-resource-to-mission",
+        json=_mission_allocation_payload(),
+    )
+    assert response.status_code == 200
+    return response.json()["allocation_id"]
+
+
+def test_release_resource_allocation_returns_released_record() -> None:
+    allocation_id = _create_allocation()
+    response = client.post(
+        "/release-resource-allocation",
+        json={"allocation_id": allocation_id},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["allocation_id"] == allocation_id
+    assert response.json()["status"] == "RELEASED"
+
+
+def test_release_resource_allocation_restores_inventory_quantity() -> None:
+    resource = next(
+        item
+        for item in emergency_resource_service._RESOURCES
+        if item.resource_id == "resource-food-ny-01"
+    )
+    original_quantity = resource.available_quantity
+    allocation_id = _create_allocation()
+
+    response = client.post(
+        "/release-resource-allocation",
+        json={"allocation_id": allocation_id},
+    )
+
+    assert response.status_code == 200
+    assert resource.available_quantity == original_quantity
+
+
+def test_release_unknown_allocation_returns_404() -> None:
+    response = client.post(
+        "/release-resource-allocation",
+        json={"allocation_id": "missing-allocation"},
+    )
+
+    assert response.status_code == 404
+    assert "does not exist" in response.json()["detail"]
+
+
+def test_release_already_released_allocation_returns_400() -> None:
+    allocation_id = _create_allocation()
+    first_response = client.post(
+        "/release-resource-allocation",
+        json={"allocation_id": allocation_id},
+    )
+    second_response = client.post(
+        "/release-resource-allocation",
+        json={"allocation_id": allocation_id},
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 400
+    assert "already released" in second_response.json()["detail"]
+
+
+def test_release_cancelled_allocation_returns_400() -> None:
+    allocation_id = _create_allocation()
+    allocation_service._ALLOCATIONS[allocation_id].status = ResourceAllocationStatus.CANCELLED
+
+    response = client.post(
+        "/release-resource-allocation",
+        json={"allocation_id": allocation_id},
+    )
+
+    assert response.status_code == 400
+    assert "cancelled" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("allocation_id", ["", "   "])
+def test_release_invalid_allocation_id_returns_422(allocation_id: str) -> None:
+    response = client.post(
+        "/release-resource-allocation",
+        json={"allocation_id": allocation_id},
+    )
+
+    assert response.status_code == 422
+
+
+def test_release_missing_allocation_id_returns_422() -> None:
+    response = client.post("/release-resource-allocation", json={})
+
+    assert response.status_code == 422
+
+
+def test_failed_release_does_not_mutate_inventory() -> None:
+    resource = next(
+        item
+        for item in emergency_resource_service._RESOURCES
+        if item.resource_id == "resource-food-ny-01"
+    )
+    allocation_id = _create_allocation()
+    client.post(
+        "/release-resource-allocation",
+        json={"allocation_id": allocation_id},
+    )
+    restored_quantity = resource.available_quantity
+
+    response = client.post(
+        "/release-resource-allocation",
+        json={"allocation_id": allocation_id},
+    )
+
+    assert response.status_code == 400
+    assert resource.available_quantity == restored_quantity
 
 
 def test_allocate_resource_to_mission_returns_allocation_record() -> None:
