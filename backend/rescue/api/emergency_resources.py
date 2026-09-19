@@ -12,6 +12,7 @@ from backend.rescue.models.allocation import ResourceAllocation
 from backend.rescue.services import emergency_resource_service
 from backend.rescue.services.allocation_service import (
     allocate_resource_to_mission,
+    cancel_allocation,
     release_allocation,
 )
 
@@ -36,6 +37,20 @@ class MissionResourceAllocationRequest(BaseModel):
 
 class ReleaseResourceAllocationRequest(BaseModel):
     """Request payload for releasing an inventory allocation."""
+
+    allocation_id: str = Field(..., description="Allocation identifier")
+
+    @field_validator("allocation_id")
+    @classmethod
+    def _validate_nonempty_identifier(cls, value: str) -> str:
+        """Reject empty or whitespace-only allocation identifiers."""
+        if not value or not value.strip():
+            raise ValueError("must not be empty")
+        return value
+
+
+class CancelResourceAllocationRequest(BaseModel):
+    """Request payload for cancelling an inventory allocation."""
 
     allocation_id: str = Field(..., description="Allocation identifier")
 
@@ -147,6 +162,24 @@ def release_resource_allocation_endpoint(
     """Release an allocation and restore its inventory quantity."""
     try:
         return release_allocation(request.allocation_id)
+    except ValueError as exc:
+        message = str(exc)
+        if "does not exist" in message:
+            raise HTTPException(status_code=404, detail=message) from exc
+        raise HTTPException(status_code=400, detail=message) from exc
+
+
+@router.post(
+    "/cancel-resource-allocation",
+    response_model=ResourceAllocation,
+    summary="Cancel a resource allocation",
+)
+def cancel_resource_allocation_endpoint(
+    request: CancelResourceAllocationRequest,
+) -> ResourceAllocation:
+    """Cancel an allocation without restoring its inventory quantity."""
+    try:
+        return cancel_allocation(request.allocation_id)
     except ValueError as exc:
         message = str(exc)
         if "does not exist" in message:
