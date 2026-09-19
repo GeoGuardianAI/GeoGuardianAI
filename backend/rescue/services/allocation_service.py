@@ -7,9 +7,17 @@ include persistence, APIs, or machine-learning logic.
 
 from __future__ import annotations
 
-from backend.rescue.models.allocation import AllocationRecommendation, AllocationRequest
+from datetime import datetime, timezone
+
+from backend.rescue.models.allocation import (
+    AllocationRecommendation,
+    AllocationRequest,
+    ResourceAllocation,
+    ResourceAllocationStatus,
+)
 from backend.rescue.models.hospital import Hospital
 from backend.rescue.models.rescue_team import Availability, RescueTeam
+from backend.rescue.services import emergency_resource_service, mission_service
 from backend.rescue.services.hospital_service import get_nearest_hospital
 from backend.rescue.services.rescue_team_service import get_available_teams
 from backend.rescue.utils.geo import haversine_km
@@ -21,6 +29,8 @@ AVAILABILITY_WEIGHT = 0.15
 SEVERITY_WEIGHT = 0.15
 CAPACITY_WEIGHT = TEAM_CAPACITY_WEIGHT
 MAX_TEAM_CAPACITY_FOR_SCORING = 25.0
+_ALLOCATIONS: dict[str, ResourceAllocation] = {}
+_NEXT_ALLOCATION_NUMBER = 1
 
 
 class ResourceAllocationError(ValueError):
@@ -33,6 +43,51 @@ class NoSuitableHospitalError(ResourceAllocationError):
 
 class NoSuitableRescueTeamError(ResourceAllocationError):
     """Raised when no suitable rescue team is available for the allocation request."""
+
+
+def _next_allocation_id() -> str:
+    """Generate a deterministic allocation ID in a simple incrementing sequence."""
+    global _NEXT_ALLOCATION_NUMBER
+    allocation_id = f"allocation-{_NEXT_ALLOCATION_NUMBER:04d}"
+    _NEXT_ALLOCATION_NUMBER += 1
+    return allocation_id
+
+
+def allocate_resource_to_mission(
+    mission_id: str,
+    resource_id: str,
+    quantity: int,
+) -> ResourceAllocation:
+    """Allocate inventory to an existing mission and store the allocation record."""
+    mission = mission_service.get_mission(mission_id)
+
+    has_quantity = emergency_resource_service.check_available_quantity(
+        resource_id, quantity
+    )
+    if not has_quantity:
+        raise ValueError("requested quantity exceeds available quantity")
+
+    emergency_resource_service.allocate_resource(resource_id, quantity)
+    allocation = ResourceAllocation(
+        allocation_id=_next_allocation_id(),
+        resource_id=resource_id,
+        quantity=quantity,
+        mission_id=mission.mission_id,
+        disaster_id=mission.disaster_id,
+        allocated_at=datetime.now(timezone.utc),
+        status=ResourceAllocationStatus.ALLOCATED,
+    )
+    _ALLOCATIONS[allocation.allocation_id] = allocation
+    return allocation
+
+
+def get_allocations_for_mission(mission_id: str) -> list[ResourceAllocation]:
+    """Return stored resource allocations for a mission in allocation order."""
+    return [
+        allocation
+        for allocation in _ALLOCATIONS.values()
+        if allocation.mission_id == mission_id
+    ]
 
 
 def _score_team(team: RescueTeam, request: AllocationRequest) -> tuple[float, float]:

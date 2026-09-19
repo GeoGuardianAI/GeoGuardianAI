@@ -1,15 +1,34 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field, field_validator
 
 from backend.rescue.models.emergency_resource import (
     EmergencyResource,
     ResourceAllocationRequest,
     ResourceType,
 )
+from backend.rescue.models.allocation import ResourceAllocation
 from backend.rescue.services import emergency_resource_service
+from backend.rescue.services.allocation_service import allocate_resource_to_mission
 
 router = APIRouter()
+
+
+class MissionResourceAllocationRequest(BaseModel):
+    """Request payload for allocating inventory to an existing mission."""
+
+    mission_id: str = Field(..., description="Mission identifier")
+    resource_id: str = Field(..., description="Resource identifier")
+    quantity: int = Field(..., gt=0, description="Quantity to allocate (> 0)")
+
+    @field_validator("mission_id", "resource_id")
+    @classmethod
+    def _validate_nonempty_identifier(cls, value: str) -> str:
+        """Reject empty or whitespace-only identifiers."""
+        if not value or not value.strip():
+            raise ValueError("must not be empty")
+        return value
 
 
 @router.post(
@@ -76,3 +95,25 @@ def nearby_resources(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/allocate-resource-to-mission",
+    response_model=ResourceAllocation,
+    summary="Allocate emergency resource inventory to a mission",
+)
+def allocate_resource_to_mission_endpoint(
+    request: MissionResourceAllocationRequest,
+):
+    """Allocate inventory to an existing mission and return its allocation record."""
+    try:
+        return allocate_resource_to_mission(
+            request.mission_id,
+            request.resource_id,
+            request.quantity,
+        )
+    except ValueError as exc:
+        message = str(exc)
+        if "does not exist" in message or message == "no suitable resource available":
+            raise HTTPException(status_code=404, detail=message) from exc
+        raise HTTPException(status_code=400, detail=message) from exc

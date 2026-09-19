@@ -7,10 +7,41 @@ They are intentionally data-only and do not include business logic.
 
 from __future__ import annotations
 
+from datetime import datetime
+from enum import Enum
+
 from pydantic import BaseModel, Field, field_validator
 
 from backend.rescue.models.hospital import Hospital
 from backend.rescue.models.rescue_team import RescueTeam
+
+
+class ResourceAllocationStatus(str, Enum):
+    """Lifecycle status for an inventory allocation record."""
+
+    ALLOCATED = "ALLOCATED"
+    RELEASED = "RELEASED"
+    CANCELLED = "CANCELLED"
+
+
+class ResourceAllocation(BaseModel):
+    """Records inventory allocated to a mission and its disaster."""
+
+    allocation_id: str = Field(..., description="Unique allocation identifier")
+    resource_id: str = Field(..., description="Allocated resource identifier")
+    quantity: int = Field(..., gt=0, description="Allocated quantity (> 0)")
+    mission_id: str = Field(..., description="Mission associated with the allocation")
+    disaster_id: str = Field(..., description="Disaster associated with the allocation")
+    allocated_at: datetime = Field(..., description="Allocation timestamp")
+    status: ResourceAllocationStatus = Field(..., description="Allocation lifecycle status")
+
+    @field_validator("allocation_id", "resource_id", "mission_id", "disaster_id")
+    @classmethod
+    def _validate_nonempty_text(cls, value: str) -> str:
+        """Reject empty or whitespace-only identifiers."""
+        if not value or not value.strip():
+            raise ValueError("must not be empty")
+        return value
 
 
 class AllocationRequest(BaseModel):

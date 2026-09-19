@@ -1,9 +1,16 @@
 """Unit tests for the `AllocationRequest` and `AllocationRecommendation` Pydantic models."""
 
+from datetime import datetime, timezone
+
 from pydantic import ValidationError
 import pytest
 
-from backend.rescue.models.allocation import AllocationRecommendation, AllocationRequest
+from backend.rescue.models.allocation import (
+    AllocationRecommendation,
+    AllocationRequest,
+    ResourceAllocation,
+    ResourceAllocationStatus,
+)
 from backend.rescue.models.hospital import Hospital
 from backend.rescue.models.rescue_team import Availability, RescueTeam, TeamType
 
@@ -16,6 +23,18 @@ def _base_request_kwargs() -> dict:
         "longitude": -74.0060,
         "severity": 3,
         "required_specialization": "search",
+    }
+
+
+def _base_resource_allocation_kwargs() -> dict:
+    return {
+        "allocation_id": "allocation-001",
+        "resource_id": "resource-001",
+        "quantity": 25,
+        "mission_id": "mission-001",
+        "disaster_id": "disaster-001",
+        "allocated_at": datetime(2026, 9, 19, tzinfo=timezone.utc),
+        "status": ResourceAllocationStatus.ALLOCATED,
     }
 
 
@@ -52,6 +71,65 @@ def test_valid_allocation_request_can_be_created() -> None:
     assert request.disaster_id == "disaster-001"
     assert request.disaster_type == "flood"
     assert request.required_specialization == "search"
+
+
+def test_valid_resource_allocation_can_be_created() -> None:
+    allocation = ResourceAllocation(**_base_resource_allocation_kwargs())
+
+    assert allocation.allocation_id == "allocation-001"
+    assert allocation.quantity == 25
+    assert allocation.status == ResourceAllocationStatus.ALLOCATED
+
+
+@pytest.mark.parametrize("status", list(ResourceAllocationStatus))
+def test_all_resource_allocation_status_values_are_accepted(
+    status: ResourceAllocationStatus,
+) -> None:
+    data = _base_resource_allocation_kwargs()
+    data["status"] = status
+
+    allocation = ResourceAllocation(**data)
+
+    assert allocation.status == status
+
+
+@pytest.mark.parametrize("quantity", [0, -1])
+def test_resource_allocation_quantity_must_be_positive(quantity: int) -> None:
+    data = _base_resource_allocation_kwargs()
+    data["quantity"] = quantity
+
+    with pytest.raises(ValidationError):
+        ResourceAllocation(**data)
+
+
+@pytest.mark.parametrize("field", ["allocation_id", "resource_id", "mission_id", "disaster_id"])
+def test_resource_allocation_required_string_fields_reject_missing_values(field: str) -> None:
+    data = _base_resource_allocation_kwargs()
+    data.pop(field)
+
+    with pytest.raises(ValidationError):
+        ResourceAllocation(**data)
+
+
+@pytest.mark.parametrize("field", ["allocation_id", "resource_id", "mission_id", "disaster_id"])
+@pytest.mark.parametrize("value", ["", "   "])
+def test_resource_allocation_required_string_fields_reject_empty_values(
+    field: str,
+    value: str,
+) -> None:
+    data = _base_resource_allocation_kwargs()
+    data[field] = value
+
+    with pytest.raises(ValidationError):
+        ResourceAllocation(**data)
+
+
+def test_resource_allocation_rejects_invalid_status() -> None:
+    data = _base_resource_allocation_kwargs()
+    data["status"] = "INVALID"
+
+    with pytest.raises(ValidationError):
+        ResourceAllocation(**data)
 
 
 @pytest.mark.parametrize("lat", [90.1, -90.1, 100.0])

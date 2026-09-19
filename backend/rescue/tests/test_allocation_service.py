@@ -1,15 +1,90 @@
 """Unit tests for the deterministic allocation service."""
 
+from datetime import datetime
+
 from pydantic import ValidationError
 import pytest
 
-from backend.rescue.models.allocation import AllocationRequest
+import backend.rescue.services.allocation_service as allocation_service
+import backend.rescue.services.emergency_resource_service as emergency_resource_service
+import backend.rescue.services.mission_service as mission_service
+import backend.rescue.services.rescue_team_service as rescue_team_service
+from backend.rescue.models.allocation import AllocationRequest, ResourceAllocationStatus
 from backend.rescue.models.hospital import Hospital
 from backend.rescue.models.rescue_team import RescueTeam
 from backend.rescue.services.allocation_service import (
     NoSuitableRescueTeamError,
+    allocate_resource_to_mission,
+    get_allocations_for_mission,
     recommend_resources,
 )
+
+
+_ORIGINAL_ALLOCATIONS = {
+    allocation_id: allocation.model_copy(deep=True)
+    for allocation_id, allocation in allocation_service._ALLOCATIONS.items()
+}
+_ORIGINAL_NEXT_ALLOCATION_NUMBER = allocation_service._NEXT_ALLOCATION_NUMBER
+_ORIGINAL_RESOURCE_QUANTITIES = {
+    resource.resource_id: resource.available_quantity
+    for resource in emergency_resource_service._RESOURCES
+}
+_ORIGINAL_MISSIONS = {
+    mission_id: mission.model_copy(deep=True)
+    for mission_id, mission in mission_service._MISSIONS.items()
+}
+_ORIGINAL_NEXT_MISSION_NUMBER = mission_service._NEXT_MISSION_NUMBER
+_ORIGINAL_TEAM_STATE = {
+    team.team_id: {
+        "availability": team.availability,
+        "current_mission_id": team.current_mission_id,
+    }
+    for team in rescue_team_service._RESCUE_TEAMS
+}
+
+
+def _restore_service_state() -> None:
+    allocation_service._ALLOCATIONS.clear()
+    allocation_service._ALLOCATIONS.update(
+        {
+            allocation_id: allocation.model_copy(deep=True)
+            for allocation_id, allocation in _ORIGINAL_ALLOCATIONS.items()
+        }
+    )
+    allocation_service._NEXT_ALLOCATION_NUMBER = _ORIGINAL_NEXT_ALLOCATION_NUMBER
+
+    for resource in emergency_resource_service._RESOURCES:
+        resource.available_quantity = _ORIGINAL_RESOURCE_QUANTITIES[resource.resource_id]
+
+    mission_service._MISSIONS.clear()
+    mission_service._MISSIONS.update(
+        {
+            mission_id: mission.model_copy(deep=True)
+            for mission_id, mission in _ORIGINAL_MISSIONS.items()
+        }
+    )
+    mission_service._NEXT_MISSION_NUMBER = _ORIGINAL_NEXT_MISSION_NUMBER
+
+    for team in rescue_team_service._RESCUE_TEAMS:
+        original = _ORIGINAL_TEAM_STATE[team.team_id]
+        team.availability = original["availability"]
+        team.current_mission_id = original["current_mission_id"]
+
+
+@pytest.fixture(autouse=True)
+def reset_service_state() -> None:
+    _restore_service_state()
+    yield
+    _restore_service_state()
+
+
+def _create_mission(disaster_id: str = "disaster-001"):
+    return mission_service.create_mission(
+        team_id="rescue-ny-01",
+        disaster_id=disaster_id,
+        destination_latitude=40.7128,
+        destination_longitude=-74.0060,
+    )
 
 
 def _base_request_kwargs() -> dict:
@@ -21,6 +96,113 @@ def _base_request_kwargs() -> dict:
         "severity": 3,
         "required_specialization": None,
     }
+
+
+def test_successful_mission_linked_allocation_is_stored() -> None:
+    mission = _create_mission()
+
+    allocation = allocate_resource_to_mission(
+        mission.mission_id, "resource-food-ny-01", 100
+    )
+
+    assert allocation.allocation_id == "allocation-0001"
+    assert allocation.resource_id == "resource-food-ny-01"
+    assert allocation.quantity == 100
+    assert allocation.mission_id == mission.mission_id
+    assert allocation.status == ResourceAllocationStatus.ALLOCATED
+    assert isinstance(allocation.allocated_at, datetime)
+    assert allocation.allocation_id in allocation_service._ALLOCATIONS
+
+
+def test_mission_linked_allocation_uses_missions_disaster_id() -> None:
+    mission = _create_mission("disaster-specific")
+
+    allocation = allocate_resource_to_mission(
+        mission.mission_id, "resource-food-ny-01", 100
+    )
+
+    assert allocation.disaster_id == "disaster-specific"
+
+
+def test_mission_linked_allocation_decreases_inventory() -> None:
+    mission = _create_mission()
+    resource = next(
+        item
+        for item in emergency_resource_service._RESOURCES
+        if item.resource_id == "resource-food-ny-01"
+    )
+    original_quantity = resource.available_quantity
+
+    allocate_resource_to_mission(mission.mission_id, resource.resource_id, 100)
+
+    assert resource.available_quantity == original_quantity - 100
+
+
+def test_unknown_mission_fails_without_mutating_inventory_or_records() -> None:
+    resource = next(
+        item
+        for item in emergency_resource_service._RESOURCES
+        if item.resource_id == "resource-food-ny-01"
+    )
+    original_quantity = resource.available_quantity
+
+    with pytest.raises(ValueError, match="does not exist"):
+        allocate_resource_to_mission("missing-mission", resource.resource_id, 100)
+
+    assert resource.available_quantity == original_quantity
+    assert allocation_service._ALLOCATIONS == {}
+
+
+def test_unknown_resource_fails_without_mutating_inventory_or_records() -> None:
+    mission = _create_mission()
+
+    with pytest.raises(ValueError, match="no suitable resource available"):
+        allocate_resource_to_mission(mission.mission_id, "missing-resource", 100)
+
+    assert allocation_service._ALLOCATIONS == {}
+
+
+def test_insufficient_quantity_fails_without_mutating_inventory_or_records() -> None:
+    mission = _create_mission()
+    resource = next(
+        item
+        for item in emergency_resource_service._RESOURCES
+        if item.resource_id == "resource-food-ny-01"
+    )
+    original_quantity = resource.available_quantity
+
+    with pytest.raises(ValueError, match="requested quantity exceeds available quantity"):
+        allocate_resource_to_mission(mission.mission_id, resource.resource_id, original_quantity + 1)
+
+    assert resource.available_quantity == original_quantity
+    assert allocation_service._ALLOCATIONS == {}
+
+
+@pytest.mark.parametrize("quantity", [0, -1, True])
+def test_invalid_quantity_fails_without_mutating_inventory_or_records(quantity: int) -> None:
+    mission = _create_mission()
+    resource = next(
+        item
+        for item in emergency_resource_service._RESOURCES
+        if item.resource_id == "resource-food-ny-01"
+    )
+    original_quantity = resource.available_quantity
+
+    with pytest.raises(ValueError, match="requested_quantity must be a positive integer"):
+        allocate_resource_to_mission(mission.mission_id, resource.resource_id, quantity)
+
+    assert resource.available_quantity == original_quantity
+    assert allocation_service._ALLOCATIONS == {}
+
+
+def test_get_allocations_for_mission_returns_records_in_allocation_order() -> None:
+    mission = _create_mission()
+    first = allocate_resource_to_mission(mission.mission_id, "resource-food-ny-01", 100)
+    second = allocate_resource_to_mission(mission.mission_id, "resource-water-la-01", 200)
+
+    allocations = get_allocations_for_mission(mission.mission_id)
+
+    assert allocations == [first, second]
 
 
 def test_valid_disaster_produces_an_allocation_recommendation() -> None:
