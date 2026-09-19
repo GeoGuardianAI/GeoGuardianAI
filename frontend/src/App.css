@@ -61,4 +61,5 @@ footer { color: #617c91; border-top: 1px solid rgba(56,244,255,.1); }
 .inventory-feedback { display: block; margin: 0 0 9px; font: 10px 'DM Mono', monospace; }
 .inventory-feedback-error { color: var(--red); }
 .inventory-feedback-success { color: var(--green); }
+.mission-allocation-history { margin: 0 clamp(20px, 4vw, 64px) 22px; }
 @media (max-width: 720px) { .inventory-allocation-controls { grid-template-columns: 1fr 86px; }.inventory-allocation-button { grid-column: span 2; } }
