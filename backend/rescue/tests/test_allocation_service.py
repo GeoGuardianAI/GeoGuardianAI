@@ -15,6 +15,7 @@ from backend.rescue.models.rescue_team import RescueTeam
 from backend.rescue.services.allocation_service import (
     NoSuitableRescueTeamError,
     allocate_resource_to_mission,
+    cancel_allocation,
     get_allocations_for_mission,
     recommend_resources,
     release_allocation,
@@ -309,6 +310,80 @@ def test_failed_release_preserves_allocation_and_resource_state() -> None:
 
     with pytest.raises(ValueError):
         release_allocation(allocation.allocation_id)
+
+    assert allocation == original_allocation
+    assert resource.available_quantity == original_quantity
+
+
+def test_cancel_allocation_changes_allocated_status_without_restoring_inventory() -> None:
+    mission = _create_mission()
+    resource = next(
+        item
+        for item in emergency_resource_service._RESOURCES
+        if item.resource_id == "resource-food-ny-01"
+    )
+    allocation = allocate_resource_to_mission(mission.mission_id, resource.resource_id, 100)
+    allocated_quantity = resource.available_quantity
+
+    cancelled = cancel_allocation(allocation.allocation_id)
+
+    assert cancelled.status == ResourceAllocationStatus.CANCELLED
+    assert resource.available_quantity == allocated_quantity
+
+
+def test_cancel_allocation_preserves_record_fields() -> None:
+    mission = _create_mission("disaster-cancel")
+    allocation = allocate_resource_to_mission(mission.mission_id, "resource-food-ny-01", 100)
+    original_fields = allocation.model_copy(deep=True)
+
+    cancelled = cancel_allocation(allocation.allocation_id)
+
+    assert cancelled.allocation_id == original_fields.allocation_id
+    assert cancelled.mission_id == original_fields.mission_id
+    assert cancelled.disaster_id == original_fields.disaster_id
+    assert cancelled.resource_id == original_fields.resource_id
+    assert cancelled.quantity == original_fields.quantity
+    assert cancelled.allocated_at == original_fields.allocated_at
+
+
+def test_cancel_unknown_allocation_fails() -> None:
+    with pytest.raises(ValueError, match="does not exist"):
+        cancel_allocation("missing-allocation")
+
+
+def test_cancel_released_allocation_fails_without_mutation() -> None:
+    mission = _create_mission()
+    resource = next(
+        item
+        for item in emergency_resource_service._RESOURCES
+        if item.resource_id == "resource-food-ny-01"
+    )
+    allocation = allocate_resource_to_mission(mission.mission_id, resource.resource_id, 100)
+    release_allocation(allocation.allocation_id)
+    original_allocation = allocation.model_copy(deep=True)
+    original_quantity = resource.available_quantity
+
+    with pytest.raises(ValueError, match="already released"):
+        cancel_allocation(allocation.allocation_id)
+
+    assert allocation == original_allocation
+    assert resource.available_quantity == original_quantity
+
+
+def test_cancel_already_cancelled_allocation_fails_without_mutation() -> None:
+    mission = _create_mission()
+    resource = next(
+        item
+        for item in emergency_resource_service._RESOURCES
+        if item.resource_id == "resource-food-ny-01"
+    )
+    allocation = allocate_resource_to_mission(mission.mission_id, resource.resource_id, 100)
+    cancel_allocation(allocation.allocation_id)
+    original_allocation = allocation.model_copy(deep=True)
+    original_quantity = resource.available_quantity
+
+    with pytest.raises(ValueError, match="already cancelled"):
+        cancel_allocation(allocation.allocation_id)
 
     assert allocation == original_allocation
     assert resource.available_quantity == original_quantity

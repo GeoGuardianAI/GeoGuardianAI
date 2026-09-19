@@ -107,6 +107,24 @@ def release_allocation(allocation_id: str) -> ResourceAllocation:
     return allocation
 
 
+def cancel_allocation(allocation_id: str) -> ResourceAllocation:
+    """Cancel an allocation without restoring its reserved inventory."""
+    try:
+        allocation = _ALLOCATIONS[allocation_id]
+    except KeyError as exc:
+        raise ValueError(f"Allocation '{allocation_id}' does not exist") from exc
+
+    if allocation.status == ResourceAllocationStatus.RELEASED:
+        raise ValueError(f"Allocation '{allocation_id}' is already released")
+    if allocation.status == ResourceAllocationStatus.CANCELLED:
+        raise ValueError(f"Allocation '{allocation_id}' is already cancelled")
+    if allocation.status != ResourceAllocationStatus.ALLOCATED:
+        raise ValueError(f"Allocation '{allocation_id}' cannot be cancelled from status {allocation.status.value}")
+
+    allocation.status = ResourceAllocationStatus.CANCELLED
+    return allocation
+
+
 def get_allocations_for_mission(mission_id: str) -> list[ResourceAllocation]:
     """Return stored resource allocations for a mission in allocation order."""
     return [
