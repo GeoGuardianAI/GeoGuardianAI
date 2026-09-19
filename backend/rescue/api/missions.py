@@ -3,7 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
+from backend.rescue.models.allocation import ResourceAllocation
 from backend.rescue.models.mission import Mission, MissionPriority, MissionStatus
+from backend.rescue.services.allocation_service import get_allocations_for_mission
 from backend.rescue.services.mission_service import (
     create_mission,
     get_mission,
@@ -103,6 +105,21 @@ def get_mission_endpoint(mission_id: str) -> Mission:
     """Return the mission matching the supplied mission identifier."""
     try:
         return get_mission(mission_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get(
+    "/mission/{mission_id}/allocations",
+    response_model=list[ResourceAllocation],
+    summary="List resource allocations for a mission",
+    tags=["Missions"],
+)
+def get_mission_allocations_endpoint(mission_id: str) -> list[ResourceAllocation]:
+    """Return resource allocation history for an existing mission."""
+    try:
+        get_mission(mission_id)
+        return get_allocations_for_mission(mission_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

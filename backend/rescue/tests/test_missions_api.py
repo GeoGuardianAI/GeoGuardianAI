@@ -6,6 +6,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import backend.rescue.services.allocation_service as allocation_service
+import backend.rescue.services.emergency_resource_service as emergency_resource_service
 import backend.rescue.services.mission_service as mission_service
 import backend.rescue.services.rescue_team_service as rescue_team_service
 from backend.rescue.api.missions import router as missions_router
@@ -26,6 +28,15 @@ _ORIGINAL_MISSIONS = {
     for mission_id, mission in mission_service._MISSIONS.items()
 }
 _ORIGINAL_NEXT_MISSION_NUMBER = mission_service._NEXT_MISSION_NUMBER
+_ORIGINAL_ALLOCATIONS = {
+    allocation_id: allocation.model_copy(deep=True)
+    for allocation_id, allocation in allocation_service._ALLOCATIONS.items()
+}
+_ORIGINAL_NEXT_ALLOCATION_NUMBER = allocation_service._NEXT_ALLOCATION_NUMBER
+_ORIGINAL_RESOURCE_QUANTITIES = {
+    resource.resource_id: resource.available_quantity
+    for resource in emergency_resource_service._RESOURCES
+}
 
 
 def _restore_team_state() -> None:
@@ -50,6 +61,16 @@ def reset_state() -> None:
         for mission_id, mission in _ORIGINAL_MISSIONS.items()
     })
     mission_service._NEXT_MISSION_NUMBER = _ORIGINAL_NEXT_MISSION_NUMBER
+    allocation_service._ALLOCATIONS.clear()
+    allocation_service._ALLOCATIONS.update(
+        {
+            allocation_id: allocation.model_copy(deep=True)
+            for allocation_id, allocation in _ORIGINAL_ALLOCATIONS.items()
+        }
+    )
+    allocation_service._NEXT_ALLOCATION_NUMBER = _ORIGINAL_NEXT_ALLOCATION_NUMBER
+    for resource in emergency_resource_service._RESOURCES:
+        resource.available_quantity = _ORIGINAL_RESOURCE_QUANTITIES[resource.resource_id]
 
     yield
 
@@ -59,6 +80,16 @@ def reset_state() -> None:
         for mission_id, mission in _ORIGINAL_MISSIONS.items()
     })
     mission_service._NEXT_MISSION_NUMBER = _ORIGINAL_NEXT_MISSION_NUMBER
+    allocation_service._ALLOCATIONS.clear()
+    allocation_service._ALLOCATIONS.update(
+        {
+            allocation_id: allocation.model_copy(deep=True)
+            for allocation_id, allocation in _ORIGINAL_ALLOCATIONS.items()
+        }
+    )
+    allocation_service._NEXT_ALLOCATION_NUMBER = _ORIGINAL_NEXT_ALLOCATION_NUMBER
+    for resource in emergency_resource_service._RESOURCES:
+        resource.available_quantity = _ORIGINAL_RESOURCE_QUANTITIES[resource.resource_id]
     _restore_team_state()
 
 
@@ -243,6 +274,76 @@ def test_get_mission_retrieved_values_match_created_mission() -> None:
         "created_at",
     ):
         assert retrieved[key] == created[key]
+
+
+def test_get_mission_allocations_returns_one_allocation() -> None:
+    create_response = client.post("/mission", json=_valid_payload())
+    mission_id = create_response.json()["mission_id"]
+    allocation = allocation_service.allocate_resource_to_mission(
+        mission_id, "resource-food-ny-01", 100
+    )
+
+    response = client.get(f"/mission/{mission_id}/allocations")
+
+    assert response.status_code == 200
+    assert response.json() == [allocation.model_dump(mode="json")]
+
+
+def test_get_mission_allocations_returns_records_in_allocation_order() -> None:
+    create_response = client.post("/mission", json=_valid_payload())
+    mission_id = create_response.json()["mission_id"]
+    first = allocation_service.allocate_resource_to_mission(
+        mission_id, "resource-food-ny-01", 100
+    )
+    second = allocation_service.allocate_resource_to_mission(
+        mission_id, "resource-water-la-01", 200
+    )
+
+    response = client.get(f"/mission/{mission_id}/allocations")
+
+    assert response.status_code == 200
+    assert [item["allocation_id"] for item in response.json()] == [
+        first.allocation_id,
+        second.allocation_id,
+    ]
+
+
+def test_get_mission_allocations_returns_empty_list_when_none_exist() -> None:
+    create_response = client.post("/mission", json=_valid_payload())
+    mission_id = create_response.json()["mission_id"]
+
+    response = client.get(f"/mission/{mission_id}/allocations")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_get_mission_allocations_unknown_mission_returns_http_404() -> None:
+    response = client.get("/mission/unknown-mission-id/allocations")
+
+    assert response.status_code == 404
+    assert "detail" in response.json()
+
+
+def test_get_mission_allocations_response_contains_complete_record() -> None:
+    create_response = client.post("/mission", json=_valid_payload())
+    mission_id = create_response.json()["mission_id"]
+    allocation_service.allocate_resource_to_mission(
+        mission_id, "resource-food-ny-01", 100
+    )
+
+    response = client.get(f"/mission/{mission_id}/allocations")
+
+    assert response.status_code == 200
+    assert set(response.json()[0]) == {
+        "allocation_id",
+        "resource_id",
+        "quantity",
+        "mission_id",
+        "disaster_id",
+        "allocated_at",
+        "status",
+    }
 
 
 def test_patch_mission_assigned_to_deployed_returns_http_200() -> None:
