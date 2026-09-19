@@ -52,7 +52,7 @@ body { background: var(--bg); }
 .quick-actions { border-color: rgba(56,244,255,.32); box-shadow: 0 0 24px rgba(56,244,255,.08), inset 0 1px rgba(255,255,255,.04); }.action-button { background: rgba(10,27,48,.88); border-color: rgba(56,244,255,.22); transition: border-color .2s, box-shadow .2s, background .2s, transform .2s; }.action-button:hover, .action-button:focus-visible { border-color: var(--cyan); background: rgba(17,48,70,.95); box-shadow: 0 0 18px rgba(56,244,255,.25), inset 0 0 12px rgba(56,244,255,.08); transform: translateY(-1px); outline: none; }.action-0 > span { color: var(--red); }.action-3 > span { color: var(--purple); }.action-button b { transition: color .2s, transform .2s; }.action-button:hover b { color: var(--cyan); transform: translateX(3px); }
 footer { color: #617c91; border-top: 1px solid rgba(56,244,255,.1); }
 :focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
-.inventory-allocation-controls { display: grid; grid-template-columns: 1fr 86px auto; gap: 8px; margin: 0 0 10px; align-items: end; }
+.inventory-allocation-controls { display: grid; grid-template-columns: 1fr 1fr 86px auto auto; gap: 8px; margin: 0 0 10px; align-items: end; }
 .inventory-allocation-controls label { display: grid; gap: 5px; color: var(--muted); font: 9px 'DM Mono', monospace; }
 .inventory-allocation-controls select, .inventory-allocation-controls input { width: 100%; min-height: 32px; border: 1px solid rgba(56,244,255,.22); background: rgba(10,27,48,.88); color: var(--text); padding: 7px 8px; font: 10px 'DM Mono', monospace; }
 .inventory-allocation-button { min-height: 32px; border: 1px solid rgba(56,244,255,.3); background: rgba(17,48,70,.95); color: var(--cyan); padding: 7px 10px; font: 10px 'DM Mono', monospace; }
