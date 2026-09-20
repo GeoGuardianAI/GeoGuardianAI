@@ -1,0 +1,14 @@
+Rule 4.2: All hospitals must prepare emergency beds equivalent to 40% of total capacity during flood events.
+
+Section 1: Evacuation Procedures
+- When river level exceeds 1.8 meters, evacuation must begin immediately.
+- Deploy at least 5 rescue boats per affected district.
+- Responders must wear waterproof gear and helmets.
+- Close Sangang Bridge and Krishna River Bridge if structural damage detected.
+- Required safety equipment: life vests, flood barriers, portable pumps.
+- First step: Issue evacuation alert via emergency broadcast system.
+- Hospitals must prepare emergency beds and stock essential medicines.
+
+Additional Rules:
+- Rule 4.1: Activate community shelters within 2 km radius.
+- Rule 5.0: Coordinate with local NGOs for resource distribution.
