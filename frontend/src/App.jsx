@@ -114,6 +114,23 @@ function ResourceAllocationDashboard({ missions, selectedMissionId, onMissionCha
   )
 }
 
+const vehicleStatuses = ['AVAILABLE', 'ASSIGNED', 'IN_TRANSIT', 'MAINTENANCE', 'UNAVAILABLE']
+
+function EmergencyVehicleTracking({ vehicles, loading, error, selectedVehicleId, onVehicleChange, latitude, longitude, onLatitudeChange, onLongitudeChange, status, onStatusChange, onRefresh, onUpdateLocation, onUpdateStatus, updateLoading, success, updateError }) {
+  return (
+    <section className="panel vehicle-tracking-panel" aria-labelledby="vehicle-tracking-title">
+      <div className="panel-header"><div><span className="eyebrow">FLEET OPERATIONS</span><h2 id="vehicle-tracking-title">Emergency Vehicle Tracking</h2></div><button className="inventory-allocation-button" type="button" onClick={onRefresh} disabled={loading}>{loading ? 'Loading...' : 'Refresh vehicles'}</button></div>
+      {loading && <span className="muted">Loading emergency vehicles...</span>}
+      {error && <span className="inventory-feedback inventory-feedback-error">{error}</span>}
+      {!loading && !error && vehicles.length === 0 && <span className="muted">No emergency vehicles are currently registered.</span>}
+      {!loading && !error && vehicles.length > 0 && <><div className="vehicle-tracking-list">{vehicles.map((vehicle) => <article className={`vehicle-tracking-card ${vehicle.vehicle_id === selectedVehicleId ? 'selected' : ''}`} key={vehicle.vehicle_id}><button type="button" className="vehicle-select-button" onClick={() => onVehicleChange(vehicle.vehicle_id)}><div><strong>{vehicle.name || vehicle.registration_number || vehicle.vehicle_id}</strong><span>{vehicle.vehicle_id} · {vehicle.vehicle_type}</span></div><span className={`availability ${vehicle.status === 'AVAILABLE' ? 'available' : 'standby'}`}><i />{vehicle.status}</span></button><div className="vehicle-tracking-details"><span>LAT <b>{vehicle.latitude}</b></span><span>LON <b>{vehicle.longitude}</b></span><span>MISSION <b>{vehicle.current_mission_id || vehicle.assigned_mission_id || 'Unassigned'}</b></span></div></article>)}</div><div className="vehicle-update-form"><label htmlFor="vehicle-location-latitude">Latitude<input id="vehicle-location-latitude" type="number" step="any" min="-90" max="90" value={latitude} onChange={(event) => onLatitudeChange(event.target.value)} disabled={!selectedVehicleId} /></label><label htmlFor="vehicle-location-longitude">Longitude<input id="vehicle-location-longitude" type="number" step="any" min="-180" max="180" value={longitude} onChange={(event) => onLongitudeChange(event.target.value)} disabled={!selectedVehicleId} /></label><button className="inventory-allocation-button" type="button" onClick={onUpdateLocation} disabled={!selectedVehicleId || updateLoading}>{updateLoading ? 'Updating...' : 'Update location'}</button><label htmlFor="vehicle-status">Status<select id="vehicle-status" value={status} onChange={(event) => onStatusChange(event.target.value)} disabled={!selectedVehicleId}>{vehicleStatuses.map((option) => <option value={option} key={option}>{option}</option>)}</select></label><button className="inventory-allocation-button" type="button" onClick={onUpdateStatus} disabled={!selectedVehicleId || updateLoading}>{updateLoading ? 'Updating...' : 'Update status'}</button></div></>}
+      {success && <span className="inventory-feedback inventory-feedback-success">{success}</span>}
+      {updateError && <span className="inventory-feedback inventory-feedback-error">{updateError}</span>}
+      {!selectedVehicleId && !loading && vehicles.length > 0 && <span className="muted">Select a vehicle to update its location or status.</span>}
+    </section>
+  )
+}
+
 function RescueRoutePlanning({ originLatitude, originLongitude, destinationLatitude, destinationLongitude, riskTolerance, candidateCount, onChange, onPlan, loading, error, result }) {
   return (
     <section className="panel route-planning-panel" aria-labelledby="route-planning-title">
@@ -169,11 +186,11 @@ function EmergencyMap({ hospitals, vehicles }) {
       )).map((vehicle) => (
         <Marker key={vehicle.vehicle_id} position={[vehicle.latitude, vehicle.longitude]}>
           <Popup>
-            <strong>{vehicle.registration_number}</strong>
+            <strong>{vehicle.name || vehicle.registration_number || vehicle.vehicle_id}</strong>
             <div>Vehicle type: {vehicle.vehicle_type}</div>
             <div>Status: {vehicle.status}</div>
             <div>Capacity: {vehicle.capacity}</div>
-            <div>Assigned mission: {vehicle.assigned_mission_id || 'Unassigned'}</div>
+            <div>Current mission: {vehicle.current_mission_id || vehicle.assigned_mission_id || 'Unassigned'}</div>
           </Popup>
         </Marker>
       ))}
@@ -200,6 +217,13 @@ function App() {
   const [vehicles, setVehicles] = useState([])
   const [vehiclesLoading, setVehiclesLoading] = useState(true)
   const [vehiclesError, setVehiclesError] = useState('')
+  const [selectedVehicleId, setSelectedVehicleId] = useState('')
+  const [vehicleLatitude, setVehicleLatitude] = useState('')
+  const [vehicleLongitude, setVehicleLongitude] = useState('')
+  const [vehicleStatus, setVehicleStatus] = useState('AVAILABLE')
+  const [vehicleUpdateLoading, setVehicleUpdateLoading] = useState(false)
+  const [vehicleUpdateSuccess, setVehicleUpdateSuccess] = useState('')
+  const [vehicleUpdateError, setVehicleUpdateError] = useState('')
   const [nearestVehicleResult, setNearestVehicleResult] = useState(null)
   const [nearestVehicleLoading, setNearestVehicleLoading] = useState(false)
   const [nearestVehicleError, setNearestVehicleError] = useState('')
@@ -250,6 +274,29 @@ function App() {
   const [allocationReleaseError, setAllocationReleaseError] = useState('')
   const [cancellingAllocationId, setCancellingAllocationId] = useState('')
   const [allocationCancellationError, setAllocationCancellationError] = useState('')
+
+  const fetchVehicles = async () => {
+    setVehiclesLoading(true)
+    setVehiclesError('')
+
+    try {
+      const response = await fetch('http://127.0.0.1:8000/vehicles')
+
+      if (!response.ok) {
+        throw new Error(`Emergency vehicle request failed with status ${response.status}`)
+      }
+
+      const data = await response.json()
+      const nextVehicles = Array.isArray(data) ? data : Array.isArray(data.value) ? data.value : []
+      setVehicles(nextVehicles)
+      setSelectedVehicleId((currentId) => currentId && nextVehicles.some((vehicle) => vehicle.vehicle_id === currentId) ? currentId : nextVehicles[0]?.vehicle_id || '')
+    } catch (error) {
+      setVehicles([])
+      setVehiclesError(error instanceof Error ? error.message : 'Unable to load emergency vehicles.')
+    } finally {
+      setVehiclesLoading(false)
+    }
+  }
 
   const fetchAvailableTeams = async () => {
     setTeamsLoading(true)
@@ -305,24 +352,6 @@ function App() {
         setResourcesError(error instanceof Error ? error.message : 'Unable to load emergency resources.')
       } finally {
         setResourcesLoading(false)
-      }
-    }
-
-    const fetchVehicles = async () => {
-      try {
-        const response = await fetch('http://127.0.0.1:8000/available-vehicle')
-
-        if (!response.ok) {
-          throw new Error(`Vehicle request failed with status ${response.status}`)
-        }
-
-        const data = await response.json()
-        setVehicles([data])
-      } catch (error) {
-        setVehicles([])
-        setVehiclesError(error instanceof Error ? error.message : 'Unable to load emergency vehicles.')
-      } finally {
-        setVehiclesLoading(false)
       }
     }
 
@@ -390,7 +419,61 @@ function App() {
     fetchMissionAllocations(selectedAllocationMissionId)
   }, [selectedAllocationMissionId])
 
+  useEffect(() => {
+    const selectedVehicle = vehicles.find((vehicle) => vehicle.vehicle_id === selectedVehicleId)
+    if (selectedVehicle) {
+      setVehicleLatitude(String(selectedVehicle.latitude))
+      setVehicleLongitude(String(selectedVehicle.longitude))
+      setVehicleStatus(selectedVehicle.status)
+    }
+  }, [selectedVehicleId, vehicles])
+
   const handleAction = (action) => setNotice(`${action} queued for command review.`)
+
+  const selectVehicle = (vehicleId) => {
+    setSelectedVehicleId(vehicleId)
+    setVehicleUpdateSuccess('')
+    setVehicleUpdateError('')
+  }
+
+  const updateVehicle = async (operation) => {
+    const latitude = Number(vehicleLatitude)
+    const longitude = Number(vehicleLongitude)
+
+    if (!selectedVehicleId) {
+      setVehicleUpdateError('Select a vehicle first.')
+      return
+    }
+
+    if (operation === 'location' && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180)) {
+      setVehicleUpdateError('Enter a valid latitude and longitude.')
+      return
+    }
+
+    setVehicleUpdateLoading(true)
+    setVehicleUpdateSuccess('')
+    setVehicleUpdateError('')
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/vehicles/${encodeURIComponent(selectedVehicleId)}/${operation}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(operation === 'location' ? { latitude, longitude } : { status: vehicleStatus }),
+      })
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(data?.detail || `Vehicle ${operation} update failed with status ${response.status}`)
+      }
+
+      setVehicleUpdateSuccess(`${data.name || data.vehicle_id} ${operation} updated successfully.`)
+      await fetchVehicles()
+    } catch (error) {
+      setVehicleUpdateError(error instanceof Error ? error.message : `Unable to update vehicle ${operation}.`)
+    } finally {
+      setVehicleUpdateLoading(false)
+    }
+  }
   
 
   const findNearestHospital = async () => {
@@ -898,6 +981,7 @@ function App() {
           <RecommendedResources latitude={recommendationLatitude} longitude={recommendationLongitude} resourceType={recommendationType} onLatitudeChange={setRecommendationLatitude} onLongitudeChange={setRecommendationLongitude} onResourceTypeChange={setRecommendationType} onRecommend={recommendResources} loading={recommendationLoading} error={recommendationError} resources={recommendedResources} />
           <RescueRoutePlanning {...routePlanningForm} onChange={(field, value) => setRoutePlanningForm((currentForm) => ({ ...currentForm, [field]: value }))} onPlan={planRescueRoute} loading={routePlanningLoading} error={routePlanningError} result={routePlanningResult} />
           <AvailableRescueTeams teams={teams} loading={teamsLoading} error={teamsError} onRefresh={fetchAvailableTeams} />
+          <EmergencyVehicleTracking vehicles={vehicles} loading={vehiclesLoading} error={vehiclesError} selectedVehicleId={selectedVehicleId} onVehicleChange={selectVehicle} latitude={vehicleLatitude} longitude={vehicleLongitude} onLatitudeChange={setVehicleLatitude} onLongitudeChange={setVehicleLongitude} status={vehicleStatus} onStatusChange={setVehicleStatus} onRefresh={fetchVehicles} onUpdateLocation={() => updateVehicle('location')} onUpdateStatus={() => updateVehicle('status')} updateLoading={vehicleUpdateLoading} success={vehicleUpdateSuccess} updateError={vehicleUpdateError} />
           <ResourceAllocationDashboard missions={missions} selectedMissionId={selectedAllocationMissionId} onMissionChange={(missionId) => { setSelectedAllocationMissionId(missionId); setMissionAllocationError(''); setMissionAllocationResult(null); setAllocationReleaseError(''); setAllocationCancellationError('') }} allocations={missionAllocations} loading={missionAllocationsLoading} error={missionAllocationsError} onRefresh={() => fetchMissionAllocations(selectedAllocationMissionId)} onRelease={releaseResourceAllocation} onCancel={cancelResourceAllocation} releasingId={releasingAllocationId} cancellingId={cancellingAllocationId} releaseError={allocationReleaseError} cancellationError={allocationCancellationError} />
         <section className="welcome-row"><div><span className="eyebrow">COMMAND OVERVIEW / 06 SEP 2026</span><h1>Good afternoon, Commander.</h1><p>Real-time operational overview for the metropolitan response network.</p></div><div className="weather"><span className="weather-icon">☼</span><div><strong>28°C</strong><span>Clear skies · Visibility 12 km</span></div></div></section>
         <section className="metrics-grid" aria-label="Operational summary"><MetricCard label="Active Missions" value="12" detail="3 critical priority" icon="⌁" tone="red" /><MetricCard label="Rescue Teams" value="08" detail="of 14 total teams" icon="♙" tone="teal" /><MetricCard label="Available Vehicles" value="23" detail="4 currently deployed" icon="▣" tone="blue" /><MetricCard label="Emergency Resources" value="94%" detail="Readiness level" icon="◈" tone="amber" /></section>
