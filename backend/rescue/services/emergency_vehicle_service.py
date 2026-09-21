@@ -19,6 +19,7 @@ from backend.rescue.utils.geo import haversine_km
 _VEHICLES: list[EmergencyVehicle] = [
     EmergencyVehicle(
         vehicle_id="ambulance-blr-01",
+        name="Bengaluru Central Ambulance",
         registration_number="KA-01-EM-101",
         vehicle_type=VehicleType.AMBULANCE,
         latitude=12.9716,
@@ -28,47 +29,53 @@ _VEHICLES: list[EmergencyVehicle] = [
     ),
     EmergencyVehicle(
         vehicle_id="firetruck-la-01",
-        registration_number="LA-FD-202",
+        name="Bengaluru East Fire Response",
+        registration_number="KA-03-FR-202",
         vehicle_type=VehicleType.FIRE_TRUCK,
-        latitude=34.0522,
-        longitude=-118.2437,
+        latitude=12.9856,
+        longitude=77.6050,
         status=VehicleStatus.AVAILABLE,
         capacity=6,
     ),
     EmergencyVehicle(
         vehicle_id="rescue-chi-01",
-        registration_number="CHI-RS-303",
+        name="Bengaluru North Urban Rescue",
+        registration_number="KA-04-RS-303",
         vehicle_type=VehicleType.RESCUE_VEHICLE,
-        latitude=41.8781,
-        longitude=-87.6298,
+        latitude=13.0205,
+        longitude=77.6400,
         status=VehicleStatus.AVAILABLE,
         capacity=8,
     ),
     EmergencyVehicle(
         vehicle_id="supply-hou-01",
-        registration_number="HOU-SUP-404",
+        name="Bengaluru Relief Supply Truck",
+        registration_number="KA-05-SU-404",
         vehicle_type=VehicleType.SUPPLY_TRUCK,
-        latitude=29.7604,
-        longitude=-95.3698,
+        latitude=12.9352,
+        longitude=77.6245,
         status=VehicleStatus.AVAILABLE,
         capacity=120,
     ),
     EmergencyVehicle(
         vehicle_id="ambulance-mia-02",
-        registration_number="MIA-EMS-505",
+        name="Bengaluru South Ambulance 02",
+        registration_number="KA-06-EM-505",
         vehicle_type=VehicleType.AMBULANCE,
-        latitude=25.7617,
-        longitude=-80.1918,
+        latitude=12.9081,
+        longitude=77.6476,
         status=VehicleStatus.IN_TRANSIT,
         capacity=4,
         assigned_mission_id="mission-2001",
+        current_mission_id="mission-2001",
     ),
     EmergencyVehicle(
         vehicle_id="rescue-den-02",
-        registration_number="DEN-RS-606",
+        name="Bengaluru West Rescue 02",
+        registration_number="KA-07-RS-606",
         vehicle_type=VehicleType.RESCUE_VEHICLE,
-        latitude=39.7392,
-        longitude=-104.9903,
+        latitude=12.9568,
+        longitude=77.5195,
         status=VehicleStatus.MAINTENANCE,
         capacity=10,
     ),
@@ -89,6 +96,41 @@ def get_available_vehicles(
         if vehicle.status == VehicleStatus.AVAILABLE
         and (vehicle_type is None or vehicle.vehicle_type == vehicle_type)
     ]
+
+
+def get_vehicles() -> list[EmergencyVehicle]:
+    """Return all registered emergency vehicles in stable registry order."""
+    return list(_VEHICLES)
+
+
+def get_vehicle(vehicle_id: str) -> EmergencyVehicle:
+    """Return a registered vehicle or raise a clear not-found error."""
+    for vehicle in _VEHICLES:
+        if vehicle.vehicle_id == vehicle_id:
+            return vehicle
+    raise ValueError(f"Emergency vehicle '{vehicle_id}' does not exist")
+
+
+def update_vehicle_location(
+    vehicle_id: str,
+    latitude: float,
+    longitude: float,
+) -> EmergencyVehicle:
+    """Update a vehicle's validated geographic location."""
+    vehicle = get_vehicle(vehicle_id)
+    vehicle.latitude = latitude
+    vehicle.longitude = longitude
+    return vehicle
+
+
+def update_vehicle_status(
+    vehicle_id: str,
+    status: VehicleStatus | str,
+) -> EmergencyVehicle:
+    """Update a vehicle's operational status."""
+    vehicle = get_vehicle(vehicle_id)
+    vehicle.status = VehicleStatus(status)
+    return vehicle
 
 
 def get_nearest_available_vehicle(

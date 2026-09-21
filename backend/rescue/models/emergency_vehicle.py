@@ -29,7 +29,16 @@ class VehicleStatus(str, Enum):
 class EmergencyVehicle(BaseModel):
     """Represents an emergency vehicle with location and mission status."""
 
-    vehicle_id: str = Field(..., description="Unique emergency vehicle identifier")
+    vehicle_id: str = Field(
+        ...,
+        min_length=1,
+        description="Unique emergency vehicle identifier",
+    )
+    name: str = Field(
+        default="Emergency Vehicle",
+        min_length=1,
+        description="Human-readable emergency vehicle name",
+    )
     registration_number: str = Field(
         ..., description="Official vehicle registration number"
     )
@@ -55,4 +64,8 @@ class EmergencyVehicle(BaseModel):
     assigned_mission_id: str | None = Field(
         default=None,
         description="Identifier for the assigned mission, if any",
+    )
+    current_mission_id: str | None = Field(
+        default=None,
+        description="Identifier for the current mission, if any",
     )
