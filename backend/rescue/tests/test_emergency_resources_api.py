@@ -339,9 +339,10 @@ def test_failed_cancel_does_not_mutate_allocation_or_inventory() -> None:
 
 
 def test_allocate_resource_to_mission_returns_allocation_record() -> None:
+    payload = _mission_allocation_payload()
     response = client.post(
         "/allocate-resource-to-mission",
-        json=_mission_allocation_payload(),
+        json=payload,
     )
 
     assert response.status_code == 200
@@ -354,7 +355,7 @@ def test_allocate_resource_to_mission_returns_allocation_record() -> None:
         "quantity",
         "status",
     }
-    assert data["mission_id"].startswith("mission-")
+    assert data["mission_id"] == payload["mission_id"]
     assert data["disaster_id"] == "disaster-001"
     assert data["resource_id"] == "resource-food-ny-01"
     assert data["quantity"] == 100
@@ -379,6 +380,17 @@ def test_allocate_resource_to_mission_decreases_resource_quantity() -> None:
 
 
 def test_allocate_resource_to_mission_unknown_mission_returns_404() -> None:
+    resource = next(
+        item
+        for item in emergency_resource_service._RESOURCES
+        if item.resource_id == "resource-food-ny-01"
+    )
+    original_quantity = resource.available_quantity
+    original_allocations = {
+        allocation_id: allocation.model_copy(deep=True)
+        for allocation_id, allocation in allocation_service._ALLOCATIONS.items()
+    }
+
     response = client.post(
         "/allocate-resource-to-mission",
         json={
@@ -390,16 +402,32 @@ def test_allocate_resource_to_mission_unknown_mission_returns_404() -> None:
 
     assert response.status_code == 404
     assert "does not exist" in response.json()["detail"]
+    assert resource.available_quantity == original_quantity
+    assert allocation_service._ALLOCATIONS == original_allocations
 
 
 def test_allocate_resource_to_mission_unknown_resource_returns_404() -> None:
+    payload = _mission_allocation_payload(resource_id="missing-resource")
+    resource = next(
+        item
+        for item in emergency_resource_service._RESOURCES
+        if item.resource_id == "resource-food-ny-01"
+    )
+    original_quantity = resource.available_quantity
+    original_allocations = {
+        allocation_id: allocation.model_copy(deep=True)
+        for allocation_id, allocation in allocation_service._ALLOCATIONS.items()
+    }
+
     response = client.post(
         "/allocate-resource-to-mission",
-        json=_mission_allocation_payload(resource_id="missing-resource"),
+        json=payload,
     )
 
     assert response.status_code == 404
     assert response.json() == {"detail": "no suitable resource available"}
+    assert resource.available_quantity == original_quantity
+    assert allocation_service._ALLOCATIONS == original_allocations
 
 
 def test_allocate_resource_to_mission_insufficient_quantity_returns_400() -> None:
@@ -414,12 +442,26 @@ def test_allocate_resource_to_mission_insufficient_quantity_returns_400() -> Non
 
 @pytest.mark.parametrize("quantity", [0, -1])
 def test_allocate_resource_to_mission_invalid_quantity_returns_422(quantity: int) -> None:
+    payload = _mission_allocation_payload(quantity=quantity)
+    resource = next(
+        item
+        for item in emergency_resource_service._RESOURCES
+        if item.resource_id == "resource-food-ny-01"
+    )
+    original_quantity = resource.available_quantity
+    original_allocations = {
+        allocation_id: allocation.model_copy(deep=True)
+        for allocation_id, allocation in allocation_service._ALLOCATIONS.items()
+    }
+
     response = client.post(
         "/allocate-resource-to-mission",
-        json=_mission_allocation_payload(quantity=quantity),
+        json=payload,
     )
 
     assert response.status_code == 422
+    assert resource.available_quantity == original_quantity
+    assert allocation_service._ALLOCATIONS == original_allocations
 
 
 @pytest.mark.parametrize("missing_field", ["mission_id", "resource_id", "quantity"])
