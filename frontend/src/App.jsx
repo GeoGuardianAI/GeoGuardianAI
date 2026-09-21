@@ -147,6 +147,33 @@ function EmergencyShelterManagement({ shelters, loading, error, selectedShelterI
   )
 }
 
+const missionPriorities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
+
+function TeamDeploymentPanel({ teams, missions, hospitals, vehicles, selectedTeamId, onTeamChange, form, onFormChange, onDeploy, loading, error, success, result }) {
+  const selectedTeam = teams.find((team) => team.team_id === selectedTeamId)
+
+  return (
+    <section className="panel team-deployment-panel" aria-labelledby="team-deployment-title">
+      <div className="panel-header"><div><span className="eyebrow">MISSION ASSIGNMENT</span><h2 id="team-deployment-title">Team Deployment</h2></div><span className="recommendation-status">{selectedTeam ? `${selectedTeam.team_id} selected` : 'Select a team'}</span></div>
+      <form className="team-deployment-form" onSubmit={(event) => { event.preventDefault(); onDeploy() }}>
+        <label htmlFor="deployment-team">Rescue team<select id="deployment-team" value={selectedTeamId} onChange={(event) => onTeamChange(event.target.value)}><option value="">Select an available team</option>{teams.map((team) => <option value={team.team_id} key={team.team_id}>{team.team_id} · {team.name} · {team.team_type} · {team.availability}{team.current_mission_id ? ` · ${team.current_mission_id}` : ''}</option>)}</select></label>
+        <label htmlFor="deployment-disaster-id">Disaster ID<input id="deployment-disaster-id" value={form.disasterId} onChange={(event) => onFormChange('disasterId', event.target.value)} placeholder="disaster-001" /></label>
+        <label htmlFor="deployment-latitude">Destination latitude<input id="deployment-latitude" type="number" step="any" min="-90" max="90" value={form.destinationLatitude} onChange={(event) => onFormChange('destinationLatitude', event.target.value)} /></label>
+        <label htmlFor="deployment-longitude">Destination longitude<input id="deployment-longitude" type="number" step="any" min="-180" max="180" value={form.destinationLongitude} onChange={(event) => onFormChange('destinationLongitude', event.target.value)} /></label>
+        <label htmlFor="deployment-priority">Priority<select id="deployment-priority" value={form.priority} onChange={(event) => onFormChange('priority', event.target.value)}>{missionPriorities.map((priority) => <option value={priority} key={priority}>{priority}</option>)}</select></label>
+        <label htmlFor="deployment-hospital">Hospital (optional)<select id="deployment-hospital" value={form.hospitalId} onChange={(event) => onFormChange('hospitalId', event.target.value)}><option value="">None</option>{hospitals.map((hospital) => <option value={hospital.hospital_id} key={hospital.hospital_id}>{hospital.hospital_id} · {hospital.name}</option>)}</select></label>
+        <label htmlFor="deployment-vehicle">Vehicle (optional)<select id="deployment-vehicle" value={form.vehicleId} onChange={(event) => onFormChange('vehicleId', event.target.value)}><option value="">None</option>{vehicles.map((vehicle) => <option value={vehicle.vehicle_id} key={vehicle.vehicle_id}>{vehicle.vehicle_id} · {vehicle.name || vehicle.registration_number || vehicle.vehicle_id}</option>)}</select></label>
+        <button className="inventory-allocation-button" type="submit" disabled={loading || !selectedTeamId}>{loading ? 'Deploying...' : 'Deploy team'}</button>
+      </form>
+      {error && <span className="inventory-feedback inventory-feedback-error">{error}</span>}
+      {success && <span className="inventory-feedback inventory-feedback-success">{success}</span>}
+      {!selectedTeamId && <span className="muted">Choose an available team before creating a mission.</span>}
+      {result && <div className="deployment-result"><div className="route-result-badge">MISSION CREATED</div><div className="deployment-result-grid"><div><small>MISSION ID</small><strong>{result.mission_id}</strong></div><div><small>ASSIGNED TEAM</small><strong>{result.team_id}</strong></div><div><small>DESTINATION</small><strong>{result.destination_latitude}, {result.destination_longitude}</strong></div><div><small>PRIORITY</small><strong>{result.priority}</strong></div><div><small>STATUS</small><strong>{result.status}</strong></div></div></div>}
+      {missions.length > 0 && <span className="muted deployment-mission-count">{missions.length} missions currently loaded.</span>}
+    </section>
+  )
+}
+
 function RescueRoutePlanning({ originLatitude, originLongitude, destinationLatitude, destinationLongitude, riskTolerance, candidateCount, onChange, onPlan, loading, error, result }) {
   return (
     <section className="panel route-planning-panel" aria-labelledby="route-planning-title">
@@ -261,6 +288,18 @@ function App() {
   const [missionsError, setMissionsError] = useState('')
   const [missionUpdatingId, setMissionUpdatingId] = useState('')
   const [deployLoading, setDeployLoading] = useState(false)
+  const [deploymentError, setDeploymentError] = useState('')
+  const [deploymentSuccess, setDeploymentSuccess] = useState('')
+  const [deploymentResult, setDeploymentResult] = useState(null)
+  const [deploymentTeamId, setDeploymentTeamId] = useState('')
+  const [deploymentForm, setDeploymentForm] = useState({
+    disasterId: 'dashboard-deployment-demo',
+    destinationLatitude: '12.9716',
+    destinationLongitude: '77.5946',
+    priority: 'MEDIUM',
+    hospitalId: '',
+    vehicleId: '',
+  })
   const [routeResult, setRouteResult] = useState(null)
   const [routeLoading, setRouteLoading] = useState(false)
   const [routeError, setRouteError] = useState('')
@@ -348,6 +387,26 @@ function App() {
     }
   }
 
+  const fetchMissions = async () => {
+    setMissionsLoading(true)
+    setMissionsError('')
+
+    try {
+      const response = await fetch('http://127.0.0.1:8000/missions')
+      if (!response.ok) {
+        throw new Error(`Mission request failed with status ${response.status}`)
+      }
+
+      const data = await response.json()
+      setMissions(Array.isArray(data) ? data : Array.isArray(data?.value) ? data.value : [])
+    } catch (error) {
+      setMissions([])
+      setMissionsError(error instanceof Error ? error.message : 'Unable to load active missions.')
+    } finally {
+      setMissionsLoading(false)
+    }
+  }
+
   const fetchShelters = async () => {
     setSheltersLoading(true)
     setSheltersError('')
@@ -403,30 +462,6 @@ function App() {
         setResourcesError(error instanceof Error ? error.message : 'Unable to load emergency resources.')
       } finally {
         setResourcesLoading(false)
-      }
-    }
-
-    const fetchMissions = async () => {
-      try {
-        const response = await fetch('http://127.0.0.1:8000/missions')
-
-        if (!response.ok) {
-          throw new Error(`Mission request failed with status ${response.status}`)
-        }
-
-        const data = await response.json()
-        setMissions(
-          Array.isArray(data)
-            ? data
-            : Array.isArray(data?.value)
-              ? data.value
-              : []
-        )
-      } catch (error) {
-        setMissions([])
-        setMissionsError(error instanceof Error ? error.message : 'Unable to load active missions.')
-      } finally {
-        setMissionsLoading(false)
       }
     }
 
@@ -653,39 +688,53 @@ function App() {
   }
 
   const deployTeam = async () => {
-    const selectedTeam = teams.find((team) => team.availability === 'AVAILABLE')
+    const destinationLatitude = Number(deploymentForm.destinationLatitude)
+    const destinationLongitude = Number(deploymentForm.destinationLongitude)
 
-    if (!selectedTeam) {
-      setNotice('No available rescue team found.')
+    if (!deploymentTeamId) {
+      setDeploymentError('Select a rescue team before deploying.')
+      return
+    }
+    if (!deploymentForm.disasterId.trim()) {
+      setDeploymentError('Enter a disaster ID before deploying.')
+      return
+    }
+    if (!Number.isFinite(destinationLatitude) || destinationLatitude < -90 || destinationLatitude > 90 || !Number.isFinite(destinationLongitude) || destinationLongitude < -180 || destinationLongitude > 180) {
+      setDeploymentError('Enter a valid destination latitude and longitude.')
       return
     }
 
     setDeployLoading(true)
+    setDeploymentError('')
+    setDeploymentSuccess('')
+    setDeploymentResult(null)
 
     try {
       const response = await fetch('http://127.0.0.1:8000/deploy-team', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          team_id: selectedTeam.team_id,
-          disaster_id: 'dashboard-deployment-demo',
-          destination_latitude: 12.9716,
-          destination_longitude: 77.5946,
-          priority: 'MEDIUM',
-          hospital_id: null,
-          vehicle_id: null,
+          team_id: deploymentTeamId,
+          disaster_id: deploymentForm.disasterId.trim(),
+          destination_latitude: destinationLatitude,
+          destination_longitude: destinationLongitude,
+          priority: deploymentForm.priority,
+          hospital_id: deploymentForm.hospitalId || null,
+          vehicle_id: deploymentForm.vehicleId || null,
         }),
       })
+      const data = await response.json().catch(() => null)
 
       if (!response.ok) {
-        throw new Error(`Team deployment failed with status ${response.status}`)
+        throw new Error(data?.detail || `Team deployment failed with status ${response.status}`)
       }
 
-      const data = await response.json()
-      setMissions((currentMissions) => [...currentMissions, data])
-      setNotice(`${selectedTeam.name} deployed successfully.`)
+      setDeploymentResult(data)
+      setDeploymentSuccess(`Mission ${data.mission_id} created successfully.`)
+      setNotice(`Mission ${data.mission_id} assigned to ${data.team_id}.`)
+      await Promise.all([fetchAvailableTeams(), fetchMissions()])
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to deploy rescue team.')
+      setDeploymentError(error instanceof Error ? error.message : 'Unable to deploy rescue team.')
     } finally {
       setDeployLoading(false)
     }
@@ -1106,6 +1155,7 @@ function App() {
           <RecommendedResources latitude={recommendationLatitude} longitude={recommendationLongitude} resourceType={recommendationType} onLatitudeChange={setRecommendationLatitude} onLongitudeChange={setRecommendationLongitude} onResourceTypeChange={setRecommendationType} onRecommend={recommendResources} loading={recommendationLoading} error={recommendationError} resources={recommendedResources} />
           <RescueRoutePlanning {...routePlanningForm} onChange={(field, value) => setRoutePlanningForm((currentForm) => ({ ...currentForm, [field]: value }))} onPlan={planRescueRoute} loading={routePlanningLoading} error={routePlanningError} result={routePlanningResult} />
           <AvailableRescueTeams teams={teams} loading={teamsLoading} error={teamsError} onRefresh={fetchAvailableTeams} />
+          <TeamDeploymentPanel teams={teams} missions={missions} hospitals={hospitals} vehicles={vehicles} selectedTeamId={deploymentTeamId} onTeamChange={(teamId) => { setDeploymentTeamId(teamId); setDeploymentError(''); setDeploymentSuccess('') }} form={deploymentForm} onFormChange={(field, value) => setDeploymentForm((currentForm) => ({ ...currentForm, [field]: value }))} onDeploy={deployTeam} loading={deployLoading} error={deploymentError} success={deploymentSuccess} result={deploymentResult} />
           <EmergencyVehicleTracking vehicles={vehicles} loading={vehiclesLoading} error={vehiclesError} selectedVehicleId={selectedVehicleId} onVehicleChange={selectVehicle} latitude={vehicleLatitude} longitude={vehicleLongitude} onLatitudeChange={setVehicleLatitude} onLongitudeChange={setVehicleLongitude} status={vehicleStatus} onStatusChange={setVehicleStatus} onRefresh={fetchVehicles} onUpdateLocation={() => updateVehicle('location')} onUpdateStatus={() => updateVehicle('status')} updateLoading={vehicleUpdateLoading} success={vehicleUpdateSuccess} updateError={vehicleUpdateError} />
           <EmergencyShelterManagement shelters={shelters} loading={sheltersLoading} error={sheltersError} selectedShelterId={selectedShelterId} onShelterChange={selectShelter} capacity={shelterCapacity} onCapacityChange={setShelterCapacity} nearestLatitude={shelterNearestLatitude} nearestLongitude={shelterNearestLongitude} onNearestLatitudeChange={setShelterNearestLatitude} onNearestLongitudeChange={setShelterNearestLongitude} nearestShelter={nearestShelter} nearestLoading={nearestShelterLoading} nearestError={nearestShelterError} onFindNearest={findNearestShelter} onRefresh={fetchShelters} onUpdateCapacity={updateShelterCapacity} updateLoading={shelterUpdateLoading} success={shelterUpdateSuccess} updateError={shelterUpdateError} />
           <ResourceAllocationDashboard missions={missions} selectedMissionId={selectedAllocationMissionId} onMissionChange={(missionId) => { setSelectedAllocationMissionId(missionId); setMissionAllocationError(''); setMissionAllocationResult(null); setAllocationReleaseError(''); setAllocationCancellationError('') }} allocations={missionAllocations} loading={missionAllocationsLoading} error={missionAllocationsError} onRefresh={() => fetchMissionAllocations(selectedAllocationMissionId)} onRelease={releaseResourceAllocation} onCancel={cancelResourceAllocation} releasingId={releasingAllocationId} cancellingId={cancellingAllocationId} releaseError={allocationReleaseError} cancellationError={allocationCancellationError} />
