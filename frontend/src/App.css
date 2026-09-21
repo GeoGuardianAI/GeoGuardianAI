@@ -69,4 +69,17 @@ footer { color: #617c91; border-top: 1px solid rgba(56,244,255,.1); }
 .allocation-cancel-button { border: 1px solid rgba(255,61,154,.3); background: rgba(17,48,70,.95); color: var(--red); padding: 7px 10px; font: 10px 'DM Mono', monospace; }
 .allocation-cancel-button:hover:not(:disabled) { border-color: var(--red); box-shadow: 0 0 12px rgba(255,61,154,.2); }
 .allocation-cancel-button:disabled { cursor: not-allowed; opacity: .45; }
+.recommendation-panel { margin-bottom: 22px; }
+.recommendation-copy { color: var(--muted); font-size: 11px; margin: -8px 0 16px; }
+.recommendation-status { color: var(--green); font: 9px 'DM Mono', monospace; text-transform: uppercase; }
+.recommendation-controls { display: grid; grid-template-columns: 1fr 1fr 1.25fr auto; gap: 8px; align-items: end; margin-bottom: 12px; }
+.recommendation-controls label { display: grid; gap: 5px; color: var(--muted); font: 9px 'DM Mono', monospace; }
+.recommendation-controls input, .recommendation-controls select { width: 100%; min-height: 32px; border: 1px solid rgba(56,244,255,.22); background: rgba(10,27,48,.88); color: var(--text); padding: 7px 8px; font: 10px 'DM Mono', monospace; }
+.recommended-resource-list { display: grid; gap: 0; }
+.recommended-resource { display: flex; align-items: center; gap: 12px; min-height: 59px; border-top: 1px solid rgba(56,244,255,.13); }
+.recommendation-rank { width: 25px; color: var(--cyan); font: 10px 'DM Mono', monospace; }
+.recommended-resource-meta { display: grid; min-width: 76px; justify-items: end; gap: 2px; }
+.recommended-resource-meta b { color: #deebeb; font: 20px 'Barlow Condensed'; }
+.recommended-resource-meta small { color: var(--muted); font: 8px 'DM Mono', monospace; text-transform: uppercase; }
 @media (max-width: 720px) { .inventory-allocation-controls { grid-template-columns: 1fr 86px; }.inventory-allocation-button { grid-column: span 2; } }
+@media (max-width: 720px) { .recommendation-controls { grid-template-columns: 1fr 1fr; }.recommendation-controls label:nth-child(3) { grid-column: span 2; }.recommendation-controls .inventory-allocation-button { grid-column: span 2; } }

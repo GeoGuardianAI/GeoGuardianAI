@@ -34,6 +34,32 @@ function MetricCard({ label, value, detail, icon, tone }) {
   return <article className="metric-card"><div className={`metric-icon ${tone}`}><Icon>{icon}</Icon></div><div className="metric-copy"><span>{label}</span><strong>{value}</strong><small>{detail}</small></div><span className="metric-trend">↗</span></article>
 }
 
+const resourceTypes = [
+  'FOOD',
+  'WATER',
+  'MEDICAL_SUPPLIES',
+  'RESCUE_EQUIPMENT',
+  'TEMPORARY_SHELTER_SUPPLIES',
+]
+
+function RecommendedResources({ latitude, longitude, resourceType, onLatitudeChange, onLongitudeChange, onResourceTypeChange, onRecommend, loading, error, resources }) {
+  return (
+    <section className="panel recommendation-panel" aria-labelledby="recommended-resources-title">
+      <div className="panel-header"><div><span className="eyebrow">READ-ONLY ROUTING</span><h2 id="recommended-resources-title">Recommended Resources</h2></div><span className="recommendation-status">{resources.length ? `${resources.length} ranked` : 'Awaiting query'}</span></div>
+      <p className="recommendation-copy">Find available supplies near a response location before committing inventory.</p>
+      <form className="recommendation-controls" onSubmit={(event) => { event.preventDefault(); onRecommend() }}>
+        <label htmlFor="recommendation-latitude">Latitude<input id="recommendation-latitude" type="number" step="any" min="-90" max="90" value={latitude} onChange={(event) => onLatitudeChange(event.target.value)} /></label>
+        <label htmlFor="recommendation-longitude">Longitude<input id="recommendation-longitude" type="number" step="any" min="-180" max="180" value={longitude} onChange={(event) => onLongitudeChange(event.target.value)} /></label>
+        <label htmlFor="recommendation-type">Type<select id="recommendation-type" value={resourceType} onChange={(event) => onResourceTypeChange(event.target.value)}><option value="">Any type</option>{resourceTypes.map((type) => <option value={type} key={type}>{type.replaceAll('_', ' ')}</option>)}</select></label>
+        <button className="inventory-allocation-button" type="submit" disabled={loading}>{loading ? 'Searching...' : 'Find resources'}</button>
+      </form>
+      {error && <span className="inventory-feedback inventory-feedback-error">{error}</span>}
+      {!loading && !error && resources.length === 0 && <span className="muted">Enter a location to see ranked emergency resources.</span>}
+      {!loading && !error && resources.length > 0 && <div className="recommended-resource-list">{resources.map((resource, index) => { const distance = resource.distance_km ?? resource.distance ?? resource.estimated_distance_km; return <article className="recommended-resource" key={resource.resource_id}><span className="recommendation-rank">{String(index + 1).padStart(2, '0')}</span><div className="compact-main"><strong>{resource.name}</strong><span>{resource.resource_id} · {resource.resource_type}</span></div><div className="recommended-resource-meta"><b>{resource.available_quantity}</b><small>available</small>{distance !== undefined && <small>{Number(distance).toFixed(1)} km</small>}</div></article>})}</div>}
+    </section>
+  )
+}
+
 function EmergencyMap({ hospitals, vehicles }) {
   return (
     <MapContainer
@@ -114,6 +140,12 @@ function App() {
   const [allocationResult, setAllocationResult] = useState(null)
   const [allocationLoading, setAllocationLoading] = useState(false)
   const [allocationError, setAllocationError] = useState('')
+  const [recommendationLatitude, setRecommendationLatitude] = useState('12.9716')
+  const [recommendationLongitude, setRecommendationLongitude] = useState('77.5946')
+  const [recommendationType, setRecommendationType] = useState('')
+  const [recommendedResources, setRecommendedResources] = useState([])
+  const [recommendationLoading, setRecommendationLoading] = useState(false)
+  const [recommendationError, setRecommendationError] = useState('')
   const [selectedResourceId, setSelectedResourceId] = useState('')
   const [allocationQuantity, setAllocationQuantity] = useState('')
   const [inventoryAllocationLoading, setInventoryAllocationLoading] = useState(false)
@@ -382,6 +414,48 @@ function App() {
     }
   }
 
+  const recommendResources = async () => {
+    const latitude = Number(recommendationLatitude)
+    const longitude = Number(recommendationLongitude)
+
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      setRecommendationError('Enter a valid latitude and longitude.')
+      setRecommendedResources([])
+      return
+    }
+
+    setRecommendationLoading(true)
+    setRecommendationError('')
+
+    try {
+      const response = await fetch('http://127.0.0.1:8000/allocate-resource', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          disaster_id: 'dashboard-resource-search',
+          disaster_type: 'RESOURCE_SEARCH',
+          latitude,
+          longitude,
+          severity: 3,
+          required_specialization: null,
+          ...(recommendationType ? { resource_type: recommendationType } : {}),
+        }),
+      })
+
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.detail?.message || data?.detail || `Resource recommendation failed with status ${response.status}`)
+      }
+
+      setRecommendedResources(Array.isArray(data?.recommended_resources) ? data.recommended_resources : [])
+    } catch (error) {
+      setRecommendedResources([])
+      setRecommendationError(error instanceof Error ? error.message : 'Unable to recommend emergency resources.')
+    } finally {
+      setRecommendationLoading(false)
+    }
+  }
+
   const allocateResourceInventory = async () => {
     const selectedResource = resources.find((resource) => String(resource.resource_id) === selectedResourceId)
     const quantity = Number(allocationQuantity)
@@ -647,6 +721,7 @@ function App() {
     <main className="app-shell">
       <header className="topbar"><div className="brand-lockup"><div className="brand-mark"><Icon>✦</Icon></div><div><strong>GeoGuardian <em>AI</em></strong><span>Emergency Rescue Command Center</span></div></div><div className="topbar-meta"><span className="live-clock">● LIVE · 14:32:08 UTC</span><div className="system-status"><span className="pulse-dot" /><span><small>SYSTEM STATUS</small>Operational</span></div><button className="profile-button" type="button" aria-label="Open user profile">AC<span>▾</span></button></div></header>
       <div className="dashboard-content">
+        <RecommendedResources latitude={recommendationLatitude} longitude={recommendationLongitude} resourceType={recommendationType} onLatitudeChange={setRecommendationLatitude} onLongitudeChange={setRecommendationLongitude} onResourceTypeChange={setRecommendationType} onRecommend={recommendResources} loading={recommendationLoading} error={recommendationError} resources={recommendedResources} />
         <section className="welcome-row"><div><span className="eyebrow">COMMAND OVERVIEW / 06 SEP 2026</span><h1>Good afternoon, Commander.</h1><p>Real-time operational overview for the metropolitan response network.</p></div><div className="weather"><span className="weather-icon">☼</span><div><strong>28°C</strong><span>Clear skies · Visibility 12 km</span></div></div></section>
         <section className="metrics-grid" aria-label="Operational summary"><MetricCard label="Active Missions" value="12" detail="3 critical priority" icon="⌁" tone="red" /><MetricCard label="Rescue Teams" value="08" detail="of 14 total teams" icon="♙" tone="teal" /><MetricCard label="Available Vehicles" value="23" detail="4 currently deployed" icon="▣" tone="blue" /><MetricCard label="Emergency Resources" value="94%" detail="Readiness level" icon="◈" tone="amber" /></section>
         <div className="command-grid"><section className="panel missions-panel"><PanelHeader eyebrow="LIVE OPERATIONS" title="Active Missions" action="View all missions" /><div className="mission-list">{missionsLoading && <span className="muted">Loading active missions...</span>}{missionsError && <span className="muted">{missionsError}</span>}{!missionsLoading && !missionsError && missions.length === 0 && <span className="muted">No active missions.</span>}{!missionsLoading && !missionsError && missions.map((mission) => { const priority = mission.priority || 'MEDIUM'; const tone = priority.toLowerCase(); const actions = missionStatusActions[mission.status] || []; const isUpdating = missionUpdatingId === mission.mission_id; return <article className="mission-row" key={mission.mission_id}><div className={`priority-line ${tone}`} /><div className="mission-main"><div className="row-heading"><strong>{mission.disaster_id}</strong><span className={`badge ${tone}`}>{priority}</span></div><span className="muted">{mission.mission_id} · {mission.status}</span></div><div className="mission-eta"><small>STATUS</small><strong>{mission.status}</strong></div>{isUpdating ? <span className="muted">Updating...</span> : actions.map((action) => <button className="text-button" type="button" onClick={() => updateMissionStatus(mission.mission_id, action.status)} disabled={missionUpdatingId !== ''} key={action.status}>{action.label}</button>)}<button className="row-arrow" type="button" aria-label={`Open ${mission.mission_id}`}>↗</button></article> })}</div></section><section className="panel map-panel"><PanelHeader eyebrow="GEOSPATIAL VIEW" title="Emergency Response Map" /><div className="map-placeholder"><EmergencyMap hospitals={hospitals} vehicles={vehicles} /></div><div className="map-footer"><span><i className="legend-dot critical" /> Active incidents</span><span><i className="legend-dot hospital" /> Hospitals</span><span><i className="legend-dot team" /> Rescue teams</span><span><i className="legend-dot vehicle" /> Emergency vehicles</span></div></section></div>
