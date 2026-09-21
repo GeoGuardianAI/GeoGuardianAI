@@ -60,6 +60,27 @@ function RecommendedResources({ latitude, longitude, resourceType, onLatitudeCha
   )
 }
 
+function RescueRoutePlanning({ originLatitude, originLongitude, destinationLatitude, destinationLongitude, riskTolerance, candidateCount, onChange, onPlan, loading, error, result }) {
+  return (
+    <section className="panel route-planning-panel" aria-labelledby="route-planning-title">
+      <div className="panel-header"><div><span className="eyebrow">RISK-AWARE DISPATCH</span><h2 id="route-planning-title">Rescue Route Planning</h2></div><span className="recommendation-status">{result?.riskAware ? 'Candidate evaluated' : 'Ready to plan'}</span></div>
+      <p className="recommendation-copy">Compare travel cost and route risk before dispatching a rescue team.</p>
+      <form className="route-planning-controls" onSubmit={(event) => { event.preventDefault(); onPlan() }}>
+        <label htmlFor="route-origin-latitude">Origin latitude<input id="route-origin-latitude" type="number" step="any" min="-90" max="90" value={originLatitude} onChange={(event) => onChange('originLatitude', event.target.value)} /></label>
+        <label htmlFor="route-origin-longitude">Origin longitude<input id="route-origin-longitude" type="number" step="any" min="-180" max="180" value={originLongitude} onChange={(event) => onChange('originLongitude', event.target.value)} /></label>
+        <label htmlFor="route-destination-latitude">Destination latitude<input id="route-destination-latitude" type="number" step="any" min="-90" max="90" value={destinationLatitude} onChange={(event) => onChange('destinationLatitude', event.target.value)} /></label>
+        <label htmlFor="route-destination-longitude">Destination longitude<input id="route-destination-longitude" type="number" step="any" min="-180" max="180" value={destinationLongitude} onChange={(event) => onChange('destinationLongitude', event.target.value)} /></label>
+        <label htmlFor="route-risk-tolerance">Risk tolerance<input id="route-risk-tolerance" type="number" step="0.01" min="0" max="1" placeholder="0.50" value={riskTolerance} onChange={(event) => onChange('riskTolerance', event.target.value)} /></label>
+        <label htmlFor="route-candidate-count">Candidates<input id="route-candidate-count" type="number" min="1" max="6" placeholder="Optional" value={candidateCount} onChange={(event) => onChange('candidateCount', event.target.value)} /></label>
+        <button className="inventory-allocation-button" type="submit" disabled={loading}>{loading ? 'Planning...' : 'Plan route'}</button>
+      </form>
+      {error && <span className="inventory-feedback inventory-feedback-error">{error}</span>}
+      {loading && <span className="muted">Evaluating route distance and disaster risk...</span>}
+      {result && !loading && !error && <div className="route-planning-result"><div className="route-result-badge">{result.riskAware ? 'RISK-AWARE SELECTION' : 'STANDARD ROUTE'}</div><div className="route-result-metrics"><div><small>DISTANCE</small><strong>{result.data.distance_km} km</strong></div><div><small>DURATION</small><strong>{result.data.estimated_duration_minutes} min</strong></div><div><small>RISK SCORE</small><strong>{result.data.route_risk_score}</strong></div><div><small>STATUS</small><strong>{result.data.route_status}</strong></div></div><p>{result.data.explanation}</p></div>}
+    </section>
+  )
+}
+
 function EmergencyMap({ hospitals, vehicles }) {
   return (
     <MapContainer
@@ -146,6 +167,17 @@ function App() {
   const [recommendedResources, setRecommendedResources] = useState([])
   const [recommendationLoading, setRecommendationLoading] = useState(false)
   const [recommendationError, setRecommendationError] = useState('')
+  const [routePlanningForm, setRoutePlanningForm] = useState({
+    originLatitude: '12.9716',
+    originLongitude: '77.5946',
+    destinationLatitude: '12.9352',
+    destinationLongitude: '77.6245',
+    riskTolerance: '',
+    candidateCount: '',
+  })
+  const [routePlanningResult, setRoutePlanningResult] = useState(null)
+  const [routePlanningLoading, setRoutePlanningLoading] = useState(false)
+  const [routePlanningError, setRoutePlanningError] = useState('')
   const [selectedResourceId, setSelectedResourceId] = useState('')
   const [allocationQuantity, setAllocationQuantity] = useState('')
   const [inventoryAllocationLoading, setInventoryAllocationLoading] = useState(false)
@@ -677,6 +709,78 @@ function App() {
     }
   }
 
+  const planRescueRoute = async () => {
+    const originLatitude = Number(routePlanningForm.originLatitude)
+    const originLongitude = Number(routePlanningForm.originLongitude)
+    const destinationLatitude = Number(routePlanningForm.destinationLatitude)
+    const destinationLongitude = Number(routePlanningForm.destinationLongitude)
+    const riskTolerance = routePlanningForm.riskTolerance === '' ? undefined : Number(routePlanningForm.riskTolerance)
+    const candidateCount = routePlanningForm.candidateCount === '' ? 0 : Number(routePlanningForm.candidateCount)
+
+    const validLatitude = (value) => Number.isFinite(value) && value >= -90 && value <= 90
+    const validLongitude = (value) => Number.isFinite(value) && value >= -180 && value <= 180
+    if (!validLatitude(originLatitude) || !validLongitude(originLongitude) || !validLatitude(destinationLatitude) || !validLongitude(destinationLongitude)) {
+      setRoutePlanningError('Enter valid origin and destination coordinates.')
+      setRoutePlanningResult(null)
+      return
+    }
+    if (riskTolerance !== undefined && (!Number.isFinite(riskTolerance) || riskTolerance < 0 || riskTolerance > 1)) {
+      setRoutePlanningError('Risk tolerance must be between 0 and 1.')
+      setRoutePlanningResult(null)
+      return
+    }
+    if (!Number.isInteger(candidateCount) || candidateCount < 0 || candidateCount > 6) {
+      setRoutePlanningError('Candidate count must be between 1 and 6, or left blank.')
+      setRoutePlanningResult(null)
+      return
+    }
+
+    const radians = (value) => value * Math.PI / 180
+    const latitudeDelta = radians(destinationLatitude - originLatitude)
+    const longitudeDelta = radians(destinationLongitude - originLongitude)
+    const originLatitudeRadians = radians(originLatitude)
+    const destinationLatitudeRadians = radians(destinationLatitude)
+    const haversine = 2 * 6371 * Math.asin(Math.sqrt(
+      Math.sin(latitudeDelta / 2) ** 2
+      + Math.cos(originLatitudeRadians) * Math.cos(destinationLatitudeRadians) * Math.sin(longitudeDelta / 2) ** 2,
+    ))
+    const candidates = candidateCount > 0
+      ? Array.from({ length: candidateCount }, (_, index) => ({
+        route_id: `dashboard-route-${index + 1}`,
+        distance_km: Number((haversine * (1 + index * 0.06)).toFixed(2)),
+        estimated_duration_minutes: Number(((haversine * (1 + index * 0.06) / 35) * 60).toFixed(2)),
+        route_risk_score: Number(Math.max(0.08, 0.42 - index * 0.07).toFixed(4)),
+      }))
+      : undefined
+
+    setRoutePlanningLoading(true)
+    setRoutePlanningError('')
+    try {
+      const response = await fetch('http://127.0.0.1:8000/calculate-route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origin_latitude: originLatitude,
+          origin_longitude: originLongitude,
+          destination_latitude: destinationLatitude,
+          destination_longitude: destinationLongitude,
+          ...(riskTolerance !== undefined ? { risk_tolerance: riskTolerance } : {}),
+          ...(candidates ? { route_candidates: candidates } : {}),
+        }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.detail || `Route planning request failed with status ${response.status}`)
+      }
+      setRoutePlanningResult({ data, riskAware: Boolean(candidates) })
+    } catch (error) {
+      setRoutePlanningResult(null)
+      setRoutePlanningError(error instanceof Error ? error.message : 'Unable to plan rescue route.')
+    } finally {
+      setRoutePlanningLoading(false)
+    }
+  }
+
   const updateMissionStatus = async (missionId, newStatus) => {
     setMissionUpdatingId(missionId)
 
@@ -721,7 +825,8 @@ function App() {
     <main className="app-shell">
       <header className="topbar"><div className="brand-lockup"><div className="brand-mark"><Icon>✦</Icon></div><div><strong>GeoGuardian <em>AI</em></strong><span>Emergency Rescue Command Center</span></div></div><div className="topbar-meta"><span className="live-clock">● LIVE · 14:32:08 UTC</span><div className="system-status"><span className="pulse-dot" /><span><small>SYSTEM STATUS</small>Operational</span></div><button className="profile-button" type="button" aria-label="Open user profile">AC<span>▾</span></button></div></header>
       <div className="dashboard-content">
-        <RecommendedResources latitude={recommendationLatitude} longitude={recommendationLongitude} resourceType={recommendationType} onLatitudeChange={setRecommendationLatitude} onLongitudeChange={setRecommendationLongitude} onResourceTypeChange={setRecommendationType} onRecommend={recommendResources} loading={recommendationLoading} error={recommendationError} resources={recommendedResources} />
+          <RecommendedResources latitude={recommendationLatitude} longitude={recommendationLongitude} resourceType={recommendationType} onLatitudeChange={setRecommendationLatitude} onLongitudeChange={setRecommendationLongitude} onResourceTypeChange={setRecommendationType} onRecommend={recommendResources} loading={recommendationLoading} error={recommendationError} resources={recommendedResources} />
+          <RescueRoutePlanning {...routePlanningForm} onChange={(field, value) => setRoutePlanningForm((currentForm) => ({ ...currentForm, [field]: value }))} onPlan={planRescueRoute} loading={routePlanningLoading} error={routePlanningError} result={routePlanningResult} />
         <section className="welcome-row"><div><span className="eyebrow">COMMAND OVERVIEW / 06 SEP 2026</span><h1>Good afternoon, Commander.</h1><p>Real-time operational overview for the metropolitan response network.</p></div><div className="weather"><span className="weather-icon">☼</span><div><strong>28°C</strong><span>Clear skies · Visibility 12 km</span></div></div></section>
         <section className="metrics-grid" aria-label="Operational summary"><MetricCard label="Active Missions" value="12" detail="3 critical priority" icon="⌁" tone="red" /><MetricCard label="Rescue Teams" value="08" detail="of 14 total teams" icon="♙" tone="teal" /><MetricCard label="Available Vehicles" value="23" detail="4 currently deployed" icon="▣" tone="blue" /><MetricCard label="Emergency Resources" value="94%" detail="Readiness level" icon="◈" tone="amber" /></section>
         <div className="command-grid"><section className="panel missions-panel"><PanelHeader eyebrow="LIVE OPERATIONS" title="Active Missions" action="View all missions" /><div className="mission-list">{missionsLoading && <span className="muted">Loading active missions...</span>}{missionsError && <span className="muted">{missionsError}</span>}{!missionsLoading && !missionsError && missions.length === 0 && <span className="muted">No active missions.</span>}{!missionsLoading && !missionsError && missions.map((mission) => { const priority = mission.priority || 'MEDIUM'; const tone = priority.toLowerCase(); const actions = missionStatusActions[mission.status] || []; const isUpdating = missionUpdatingId === mission.mission_id; return <article className="mission-row" key={mission.mission_id}><div className={`priority-line ${tone}`} /><div className="mission-main"><div className="row-heading"><strong>{mission.disaster_id}</strong><span className={`badge ${tone}`}>{priority}</span></div><span className="muted">{mission.mission_id} · {mission.status}</span></div><div className="mission-eta"><small>STATUS</small><strong>{mission.status}</strong></div>{isUpdating ? <span className="muted">Updating...</span> : actions.map((action) => <button className="text-button" type="button" onClick={() => updateMissionStatus(mission.mission_id, action.status)} disabled={missionUpdatingId !== ''} key={action.status}>{action.label}</button>)}<button className="row-arrow" type="button" aria-label={`Open ${mission.mission_id}`}>↗</button></article> })}</div></section><section className="panel map-panel"><PanelHeader eyebrow="GEOSPATIAL VIEW" title="Emergency Response Map" /><div className="map-placeholder"><EmergencyMap hospitals={hospitals} vehicles={vehicles} /></div><div className="map-footer"><span><i className="legend-dot critical" /> Active incidents</span><span><i className="legend-dot hospital" /> Hospitals</span><span><i className="legend-dot team" /> Rescue teams</span><span><i className="legend-dot vehicle" /> Emergency vehicles</span></div></section></div>

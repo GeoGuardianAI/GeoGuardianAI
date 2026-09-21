@@ -70,6 +70,7 @@ footer { color: #617c91; border-top: 1px solid rgba(56,244,255,.1); }
 .allocation-cancel-button:hover:not(:disabled) { border-color: var(--red); box-shadow: 0 0 12px rgba(255,61,154,.2); }
 .allocation-cancel-button:disabled { cursor: not-allowed; opacity: .45; }
 .recommendation-panel { margin-bottom: 22px; }
+.route-planning-panel { margin-bottom: 22px; }
 .recommendation-copy { color: var(--muted); font-size: 11px; margin: -8px 0 16px; }
 .recommendation-status { color: var(--green); font: 9px 'DM Mono', monospace; text-transform: uppercase; }
 .recommendation-controls { display: grid; grid-template-columns: 1fr 1fr 1.25fr auto; gap: 8px; align-items: end; margin-bottom: 12px; }
@@ -81,5 +82,17 @@ footer { color: #617c91; border-top: 1px solid rgba(56,244,255,.1); }
 .recommended-resource-meta { display: grid; min-width: 76px; justify-items: end; gap: 2px; }
 .recommended-resource-meta b { color: #deebeb; font: 20px 'Barlow Condensed'; }
 .recommended-resource-meta small { color: var(--muted); font: 8px 'DM Mono', monospace; text-transform: uppercase; }
+.route-planning-controls { display: grid; grid-template-columns: repeat(4, 1fr) 0.8fr 0.8fr auto; gap: 8px; align-items: end; margin-bottom: 12px; }
+.route-planning-controls label { display: grid; gap: 5px; color: var(--muted); font: 9px 'DM Mono', monospace; }
+.route-planning-controls input { width: 100%; min-height: 32px; border: 1px solid rgba(56,244,255,.22); background: rgba(10,27,48,.88); color: var(--text); padding: 7px 8px; font: 10px 'DM Mono', monospace; }
+.route-planning-result { border-top: 1px solid rgba(56,244,255,.13); padding-top: 12px; }
+.route-result-badge { display: inline-block; color: var(--green); border: 1px solid rgba(93,255,154,.35); background: rgba(93,255,154,.08); padding: 5px 7px; font: 9px 'DM Mono', monospace; letter-spacing: .7px; }
+.route-result-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 14px 0 10px; }
+.route-result-metrics div { display: grid; gap: 4px; }
+.route-result-metrics small { color: var(--muted); font: 8px 'DM Mono', monospace; }
+.route-result-metrics strong { color: #eafcff; font: 18px 'Barlow Condensed', sans-serif; }
+.route-planning-result p { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 0; }
 @media (max-width: 720px) { .inventory-allocation-controls { grid-template-columns: 1fr 86px; }.inventory-allocation-button { grid-column: span 2; } }
 @media (max-width: 720px) { .recommendation-controls { grid-template-columns: 1fr 1fr; }.recommendation-controls label:nth-child(3) { grid-column: span 2; }.recommendation-controls .inventory-allocation-button { grid-column: span 2; } }
+@media (max-width: 1050px) { .route-planning-controls { grid-template-columns: repeat(2, 1fr); }.route-planning-controls .inventory-allocation-button { grid-column: span 2; } }
+@media (max-width: 720px) { .route-result-metrics { grid-template-columns: 1fr 1fr; } }
