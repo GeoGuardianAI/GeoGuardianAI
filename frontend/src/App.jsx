@@ -60,6 +60,32 @@ function RecommendedResources({ latitude, longitude, resourceType, onLatitudeCha
   )
 }
 
+function NearestHospital({ latitude, longitude, onLatitudeChange, onLongitudeChange, onFind, loading, error, result }) {
+  const distanceInKilometers = result
+    ? 2 * 6371 * Math.asin(Math.sqrt(
+      Math.sin(((result.latitude - Number(latitude)) * Math.PI / 180) / 2) ** 2
+      + Math.cos(Number(latitude) * Math.PI / 180) * Math.cos(result.latitude * Math.PI / 180)
+      * Math.sin(((result.longitude - Number(longitude)) * Math.PI / 180) / 2) ** 2,
+    ))
+    : null
+
+  return (
+    <section className="panel nearest-hospital-panel" aria-labelledby="nearest-hospital-title">
+      <div className="panel-header"><div><span className="eyebrow">MEDICAL DISPATCH</span><h2 id="nearest-hospital-title">Nearest Hospital</h2></div><span className="recommendation-status">{result ? 'Hospital located' : 'Ready to search'}</span></div>
+      <p className="recommendation-copy">Locate the closest hospital to a disaster or response location.</p>
+      <form className="nearest-hospital-controls" onSubmit={(event) => { event.preventDefault(); onFind() }}>
+        <label htmlFor="nearest-hospital-latitude">Disaster latitude<input id="nearest-hospital-latitude" type="number" step="any" min="-90" max="90" value={latitude} onChange={(event) => onLatitudeChange(event.target.value)} /></label>
+        <label htmlFor="nearest-hospital-longitude">Disaster longitude<input id="nearest-hospital-longitude" type="number" step="any" min="-180" max="180" value={longitude} onChange={(event) => onLongitudeChange(event.target.value)} /></label>
+        <button className="inventory-allocation-button" type="submit" disabled={loading}>{loading ? 'Searching...' : 'Find nearest hospital'}</button>
+      </form>
+      {error && <span className="inventory-feedback inventory-feedback-error">{error}</span>}
+      {loading && <span className="muted">Searching the medical network...</span>}
+      {result && !loading && !error && <div className="nearest-hospital-result"><div className="nearest-hospital-heading"><div className="facility-icon"><Icon>✚</Icon></div><div><strong>{result.name}</strong><span>{distanceInKilometers.toFixed(1)} km from disaster location</span></div></div><div className="hospital-detail-grid">{Object.entries(result).map(([field, value]) => <div key={field}><small>{field.replaceAll('_', ' ')}</small><strong>{typeof value === 'boolean' ? (value ? 'Available' : 'Unavailable') : String(value)}</strong></div>)}</div></div>}
+      {!loading && !error && !result && <span className="muted">Enter a location to locate the nearest hospital.</span>}
+    </section>
+  )
+}
+
 function RescueRoutePlanning({ originLatitude, originLongitude, destinationLatitude, destinationLongitude, riskTolerance, candidateCount, onChange, onPlan, loading, error, result }) {
   return (
     <section className="panel route-planning-panel" aria-labelledby="route-planning-title">
@@ -135,6 +161,8 @@ function App() {
   const [nearestHospitalResult, setNearestHospitalResult] = useState(null)
   const [nearestHospitalLoading, setNearestHospitalLoading] = useState(false)
   const [nearestHospitalError, setNearestHospitalError] = useState('')
+  const [nearestHospitalLatitude, setNearestHospitalLatitude] = useState('12.9716')
+  const [nearestHospitalLongitude, setNearestHospitalLongitude] = useState('77.5946')
   const [teams, setTeams] = useState([])
   const [teamsLoading, setTeamsLoading] = useState(true)
   const [teamsError, setTeamsError] = useState('')
@@ -334,11 +362,20 @@ function App() {
   
 
   const findNearestHospital = async () => {
+    const latitude = Number(nearestHospitalLatitude)
+    const longitude = Number(nearestHospitalLongitude)
+
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      setNearestHospitalError('Enter a valid latitude and longitude.')
+      setNearestHospitalResult(null)
+      return
+    }
+
     setNearestHospitalLoading(true)
     setNearestHospitalError('')
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/nearest-hospital?latitude=12.9716&longitude=77.5946')
+      const response = await fetch(`http://127.0.0.1:8000/nearest-hospital?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}`)
 
       if (!response.ok) {
         throw new Error(`Nearest hospital request failed with status ${response.status}`)
@@ -825,6 +862,7 @@ function App() {
     <main className="app-shell">
       <header className="topbar"><div className="brand-lockup"><div className="brand-mark"><Icon>✦</Icon></div><div><strong>GeoGuardian <em>AI</em></strong><span>Emergency Rescue Command Center</span></div></div><div className="topbar-meta"><span className="live-clock">● LIVE · 14:32:08 UTC</span><div className="system-status"><span className="pulse-dot" /><span><small>SYSTEM STATUS</small>Operational</span></div><button className="profile-button" type="button" aria-label="Open user profile">AC<span>▾</span></button></div></header>
       <div className="dashboard-content">
+          <NearestHospital latitude={nearestHospitalLatitude} longitude={nearestHospitalLongitude} onLatitudeChange={setNearestHospitalLatitude} onLongitudeChange={setNearestHospitalLongitude} onFind={findNearestHospital} loading={nearestHospitalLoading} error={nearestHospitalError} result={nearestHospitalResult} />
           <RecommendedResources latitude={recommendationLatitude} longitude={recommendationLongitude} resourceType={recommendationType} onLatitudeChange={setRecommendationLatitude} onLongitudeChange={setRecommendationLongitude} onResourceTypeChange={setRecommendationType} onRecommend={recommendResources} loading={recommendationLoading} error={recommendationError} resources={recommendedResources} />
           <RescueRoutePlanning {...routePlanningForm} onChange={(field, value) => setRoutePlanningForm((currentForm) => ({ ...currentForm, [field]: value }))} onPlan={planRescueRoute} loading={routePlanningLoading} error={routePlanningError} result={routePlanningResult} />
         <section className="welcome-row"><div><span className="eyebrow">COMMAND OVERVIEW / 06 SEP 2026</span><h1>Good afternoon, Commander.</h1><p>Real-time operational overview for the metropolitan response network.</p></div><div className="weather"><span className="weather-icon">☼</span><div><strong>28°C</strong><span>Clear skies · Visibility 12 km</span></div></div></section>

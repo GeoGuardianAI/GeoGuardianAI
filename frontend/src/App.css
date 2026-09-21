@@ -71,6 +71,7 @@ footer { color: #617c91; border-top: 1px solid rgba(56,244,255,.1); }
 .allocation-cancel-button:disabled { cursor: not-allowed; opacity: .45; }
 .recommendation-panel { margin-bottom: 22px; }
 .route-planning-panel { margin-bottom: 22px; }
+.nearest-hospital-panel { margin-bottom: 22px; }
 .recommendation-copy { color: var(--muted); font-size: 11px; margin: -8px 0 16px; }
 .recommendation-status { color: var(--green); font: 9px 'DM Mono', monospace; text-transform: uppercase; }
 .recommendation-controls { display: grid; grid-template-columns: 1fr 1fr 1.25fr auto; gap: 8px; align-items: end; margin-bottom: 12px; }
@@ -92,7 +93,19 @@ footer { color: #617c91; border-top: 1px solid rgba(56,244,255,.1); }
 .route-result-metrics small { color: var(--muted); font: 8px 'DM Mono', monospace; }
 .route-result-metrics strong { color: #eafcff; font: 18px 'Barlow Condensed', sans-serif; }
 .route-planning-result p { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 0; }
+.nearest-hospital-controls { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; margin-bottom: 12px; }
+.nearest-hospital-controls label { display: grid; gap: 5px; color: var(--muted); font: 9px 'DM Mono', monospace; }
+.nearest-hospital-controls input { width: 100%; min-height: 32px; border: 1px solid rgba(56,244,255,.22); background: rgba(10,27,48,.88); color: var(--text); padding: 7px 8px; font: 10px 'DM Mono', monospace; }
+.nearest-hospital-result { border-top: 1px solid rgba(56,244,255,.13); padding-top: 12px; }
+.nearest-hospital-heading { display: flex; align-items: center; gap: 11px; }
+.nearest-hospital-heading strong { display: block; color: #eafcff; font-size: 13px; }
+.nearest-hospital-heading span { display: block; color: var(--cyan); font: 10px 'DM Mono', monospace; margin-top: 5px; }
+.hospital-detail-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+.hospital-detail-grid div { display: grid; gap: 4px; }
+.hospital-detail-grid small { color: var(--muted); font: 8px 'DM Mono', monospace; text-transform: uppercase; }
+.hospital-detail-grid strong { color: #eafcff; font: 15px 'Barlow Condensed', sans-serif; overflow-wrap: anywhere; }
 @media (max-width: 720px) { .inventory-allocation-controls { grid-template-columns: 1fr 86px; }.inventory-allocation-button { grid-column: span 2; } }
 @media (max-width: 720px) { .recommendation-controls { grid-template-columns: 1fr 1fr; }.recommendation-controls label:nth-child(3) { grid-column: span 2; }.recommendation-controls .inventory-allocation-button { grid-column: span 2; } }
 @media (max-width: 1050px) { .route-planning-controls { grid-template-columns: repeat(2, 1fr); }.route-planning-controls .inventory-allocation-button { grid-column: span 2; } }
 @media (max-width: 720px) { .route-result-metrics { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 720px) { .nearest-hospital-controls { grid-template-columns: 1fr 1fr; }.nearest-hospital-controls .inventory-allocation-button { grid-column: span 2; }.hospital-detail-grid { grid-template-columns: 1fr 1fr; } }
