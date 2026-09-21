@@ -86,6 +86,18 @@ function NearestHospital({ latitude, longitude, onLatitudeChange, onLongitudeCha
   )
 }
 
+function AvailableRescueTeams({ teams, loading, error, onRefresh }) {
+  return (
+    <section className="panel available-teams-panel" aria-labelledby="available-teams-title">
+      <div className="panel-header"><div><span className="eyebrow">FIELD PERSONNEL</span><h2 id="available-teams-title">Available Rescue Teams</h2></div><button className="inventory-allocation-button" type="button" onClick={onRefresh} disabled={loading}>{loading ? 'Loading...' : 'Refresh teams'}</button></div>
+      {error && <span className="inventory-feedback inventory-feedback-error">{error}</span>}
+      {loading && <span className="muted">Loading available rescue teams...</span>}
+      {!loading && !error && teams.length === 0 && <span className="muted">No available rescue teams found near the response center.</span>}
+      {!loading && !error && teams.length > 0 && <div className="available-team-list">{teams.map((team) => <article className="available-team-card" key={team.team_id}><div className="available-team-summary"><div className="avatar">{(team.name || 'Team').split(' ').map((part) => part[0]).join('').slice(0, 2)}</div><div className="compact-main"><strong>{team.name}</strong><span>{team.team_id} · {team.team_type}</span></div><span className="availability"><i />{team.availability}</span></div><div className="available-team-details">{Object.entries(team).map(([field, value]) => <div key={field}><small>{field.replaceAll('_', ' ')}</small><strong>{Array.isArray(value) ? value.join(' · ') || 'None' : value === null ? 'None' : String(value)}</strong></div>)}</div></article>)}</div>}
+    </section>
+  )
+}
+
 function RescueRoutePlanning({ originLatitude, originLongitude, destinationLatitude, destinationLongitude, riskTolerance, candidateCount, onChange, onPlan, loading, error, result }) {
   return (
     <section className="panel route-planning-panel" aria-labelledby="route-planning-title">
@@ -223,6 +235,27 @@ function App() {
   const [cancellingAllocationId, setCancellingAllocationId] = useState('')
   const [allocationCancellationError, setAllocationCancellationError] = useState('')
 
+  const fetchAvailableTeams = async () => {
+    setTeamsLoading(true)
+    setTeamsError('')
+
+    try {
+      const response = await fetch('http://127.0.0.1:8000/available-team?latitude=12.9716&longitude=77.5946')
+
+      if (!response.ok) {
+        throw new Error(`Rescue team request failed with status ${response.status}`)
+      }
+
+      const data = await response.json()
+      setTeams(Array.isArray(data) ? data : Array.isArray(data.value) ? data.value : [])
+    } catch (error) {
+      setTeams([])
+      setTeamsError(error instanceof Error ? error.message : 'Unable to load rescue teams.')
+    } finally {
+      setTeamsLoading(false)
+    }
+  }
+
   useEffect(() => {
     const fetchHospitals = async () => {
       try {
@@ -238,23 +271,6 @@ function App() {
         setHospitalsError(error instanceof Error ? error.message : 'Unable to load nearby hospitals.')
       } finally {
         setHospitalsLoading(false)
-      }
-    }
-
-    const fetchTeams = async () => {
-      try {
-        const response = await fetch('http://127.0.0.1:8000/available-team?latitude=12.9716&longitude=77.5946')
-
-        if (!response.ok) {
-          throw new Error(`Rescue team request failed with status ${response.status}`)
-        }
-
-        const data = await response.json()
-        setTeams(Array.isArray(data) ? data : Array.isArray(data.value) ? data.value : [])
-      } catch (error) {
-        setTeamsError(error instanceof Error ? error.message : 'Unable to load rescue teams.')
-      } finally {
-        setTeamsLoading(false)
       }
     }
 
@@ -319,7 +335,7 @@ function App() {
     }
 
     fetchHospitals()
-    fetchTeams()
+    fetchAvailableTeams()
     fetchResources()
     fetchVehicles()
     fetchMissions()
@@ -865,6 +881,7 @@ function App() {
           <NearestHospital latitude={nearestHospitalLatitude} longitude={nearestHospitalLongitude} onLatitudeChange={setNearestHospitalLatitude} onLongitudeChange={setNearestHospitalLongitude} onFind={findNearestHospital} loading={nearestHospitalLoading} error={nearestHospitalError} result={nearestHospitalResult} />
           <RecommendedResources latitude={recommendationLatitude} longitude={recommendationLongitude} resourceType={recommendationType} onLatitudeChange={setRecommendationLatitude} onLongitudeChange={setRecommendationLongitude} onResourceTypeChange={setRecommendationType} onRecommend={recommendResources} loading={recommendationLoading} error={recommendationError} resources={recommendedResources} />
           <RescueRoutePlanning {...routePlanningForm} onChange={(field, value) => setRoutePlanningForm((currentForm) => ({ ...currentForm, [field]: value }))} onPlan={planRescueRoute} loading={routePlanningLoading} error={routePlanningError} result={routePlanningResult} />
+          <AvailableRescueTeams teams={teams} loading={teamsLoading} error={teamsError} onRefresh={fetchAvailableTeams} />
         <section className="welcome-row"><div><span className="eyebrow">COMMAND OVERVIEW / 06 SEP 2026</span><h1>Good afternoon, Commander.</h1><p>Real-time operational overview for the metropolitan response network.</p></div><div className="weather"><span className="weather-icon">☼</span><div><strong>28°C</strong><span>Clear skies · Visibility 12 km</span></div></div></section>
         <section className="metrics-grid" aria-label="Operational summary"><MetricCard label="Active Missions" value="12" detail="3 critical priority" icon="⌁" tone="red" /><MetricCard label="Rescue Teams" value="08" detail="of 14 total teams" icon="♙" tone="teal" /><MetricCard label="Available Vehicles" value="23" detail="4 currently deployed" icon="▣" tone="blue" /><MetricCard label="Emergency Resources" value="94%" detail="Readiness level" icon="◈" tone="amber" /></section>
         <div className="command-grid"><section className="panel missions-panel"><PanelHeader eyebrow="LIVE OPERATIONS" title="Active Missions" action="View all missions" /><div className="mission-list">{missionsLoading && <span className="muted">Loading active missions...</span>}{missionsError && <span className="muted">{missionsError}</span>}{!missionsLoading && !missionsError && missions.length === 0 && <span className="muted">No active missions.</span>}{!missionsLoading && !missionsError && missions.map((mission) => { const priority = mission.priority || 'MEDIUM'; const tone = priority.toLowerCase(); const actions = missionStatusActions[mission.status] || []; const isUpdating = missionUpdatingId === mission.mission_id; return <article className="mission-row" key={mission.mission_id}><div className={`priority-line ${tone}`} /><div className="mission-main"><div className="row-heading"><strong>{mission.disaster_id}</strong><span className={`badge ${tone}`}>{priority}</span></div><span className="muted">{mission.mission_id} · {mission.status}</span></div><div className="mission-eta"><small>STATUS</small><strong>{mission.status}</strong></div>{isUpdating ? <span className="muted">Updating...</span> : actions.map((action) => <button className="text-button" type="button" onClick={() => updateMissionStatus(mission.mission_id, action.status)} disabled={missionUpdatingId !== ''} key={action.status}>{action.label}</button>)}<button className="row-arrow" type="button" aria-label={`Open ${mission.mission_id}`}>↗</button></article> })}</div></section><section className="panel map-panel"><PanelHeader eyebrow="GEOSPATIAL VIEW" title="Emergency Response Map" /><div className="map-placeholder"><EmergencyMap hospitals={hospitals} vehicles={vehicles} /></div><div className="map-footer"><span><i className="legend-dot critical" /> Active incidents</span><span><i className="legend-dot hospital" /> Hospitals</span><span><i className="legend-dot team" /> Rescue teams</span><span><i className="legend-dot vehicle" /> Emergency vehicles</span></div></section></div>
