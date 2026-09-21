@@ -131,6 +131,22 @@ function EmergencyVehicleTracking({ vehicles, loading, error, selectedVehicleId,
   )
 }
 
+function EmergencyShelterManagement({ shelters, loading, error, selectedShelterId, onShelterChange, capacity, onCapacityChange, nearestLatitude, nearestLongitude, onNearestLatitudeChange, onNearestLongitudeChange, nearestShelter, nearestLoading, nearestError, onFindNearest, onRefresh, onUpdateCapacity, updateLoading, success, updateError }) {
+  return (
+    <section className="panel shelter-management-panel" aria-labelledby="shelter-management-title">
+      <div className="panel-header"><div><span className="eyebrow">EVACUATION NETWORK</span><h2 id="shelter-management-title">Emergency Shelter Management</h2></div><button className="inventory-allocation-button" type="button" onClick={onRefresh} disabled={loading}>{loading ? 'Loading...' : 'Refresh shelters'}</button></div>
+      {loading && <span className="muted">Loading emergency shelters...</span>}
+      {error && <span className="inventory-feedback inventory-feedback-error">{error}</span>}
+      {!loading && !error && shelters.length === 0 && <span className="muted">No emergency shelters are currently registered.</span>}
+      {!loading && !error && shelters.length > 0 && <div className="shelter-list">{shelters.map((shelter) => <article className={`shelter-card ${shelter.shelter_id === selectedShelterId ? 'selected' : ''}`} key={shelter.shelter_id}><button type="button" className="shelter-select-button" onClick={() => onShelterChange(shelter.shelter_id)}><div><strong>{shelter.name}</strong><span>{shelter.shelter_id}</span></div><span className={`availability ${shelter.status === 'ACCEPTING_EVACUEES' || shelter.status === 'AVAILABLE' ? 'available' : 'standby'}`}><i />{shelter.status}</span></button><div className="shelter-details"><span>LAT <b>{shelter.latitude}</b></span><span>LON <b>{shelter.longitude}</b></span><span>CAPACITY <b>{shelter.capacity}</b></span><span>AVAILABLE <b>{shelter.available_capacity}</b></span></div></article>)}</div>}
+      <div className="shelter-operations"><div className="shelter-operation-block"><span className="eyebrow">NEAREST SHELTER</span><form className="shelter-nearest-controls" onSubmit={(event) => { event.preventDefault(); onFindNearest() }}><label htmlFor="nearest-shelter-latitude">Latitude<input id="nearest-shelter-latitude" type="number" step="any" min="-90" max="90" value={nearestLatitude} onChange={(event) => onNearestLatitudeChange(event.target.value)} /></label><label htmlFor="nearest-shelter-longitude">Longitude<input id="nearest-shelter-longitude" type="number" step="any" min="-180" max="180" value={nearestLongitude} onChange={(event) => onNearestLongitudeChange(event.target.value)} /></label><button className="inventory-allocation-button" type="submit" disabled={nearestLoading}>{nearestLoading ? 'Searching...' : 'Find nearest shelter'}</button></form>{nearestLoading && <span className="muted">Searching available shelters...</span>}{nearestError && <span className="inventory-feedback inventory-feedback-error">{nearestError}</span>}{nearestShelter && !nearestLoading && !nearestError && <div className="nearest-shelter-result"><strong>{nearestShelter.name}</strong><span>{nearestShelter.shelter_id} · {Number(nearestShelter.distance_km).toFixed(1)} km away</span></div>}</div><div className="shelter-operation-block"><span className="eyebrow">CAPACITY CONTROL</span><div className="shelter-capacity-controls"><label htmlFor="shelter-selection">Shelter<select id="shelter-selection" value={selectedShelterId} onChange={(event) => onShelterChange(event.target.value)}><option value="">Select a shelter</option>{shelters.map((shelter) => <option value={shelter.shelter_id} key={shelter.shelter_id}>{shelter.shelter_id} · {shelter.name}</option>)}</select></label><label htmlFor="shelter-available-capacity">Available capacity<input id="shelter-available-capacity" type="number" min="0" value={capacity} onChange={(event) => onCapacityChange(event.target.value)} disabled={!selectedShelterId} /></label><button className="inventory-allocation-button" type="button" onClick={onUpdateCapacity} disabled={!selectedShelterId || updateLoading}>{updateLoading ? 'Updating...' : 'Update capacity'}</button></div></div></div>
+      {success && <span className="inventory-feedback inventory-feedback-success">{success}</span>}
+      {updateError && <span className="inventory-feedback inventory-feedback-error">{updateError}</span>}
+      {!selectedShelterId && !loading && shelters.length > 0 && <span className="muted">Select a shelter to update its available capacity.</span>}
+    </section>
+  )
+}
+
 function RescueRoutePlanning({ originLatitude, originLongitude, destinationLatitude, destinationLongitude, riskTolerance, candidateCount, onChange, onPlan, loading, error, result }) {
   return (
     <section className="panel route-planning-panel" aria-labelledby="route-planning-title">
@@ -224,6 +240,19 @@ function App() {
   const [vehicleUpdateLoading, setVehicleUpdateLoading] = useState(false)
   const [vehicleUpdateSuccess, setVehicleUpdateSuccess] = useState('')
   const [vehicleUpdateError, setVehicleUpdateError] = useState('')
+  const [shelters, setShelters] = useState([])
+  const [sheltersLoading, setSheltersLoading] = useState(true)
+  const [sheltersError, setSheltersError] = useState('')
+  const [selectedShelterId, setSelectedShelterId] = useState('')
+  const [shelterCapacity, setShelterCapacity] = useState('')
+  const [shelterNearestLatitude, setShelterNearestLatitude] = useState('12.9716')
+  const [shelterNearestLongitude, setShelterNearestLongitude] = useState('77.5946')
+  const [nearestShelter, setNearestShelter] = useState(null)
+  const [nearestShelterLoading, setNearestShelterLoading] = useState(false)
+  const [nearestShelterError, setNearestShelterError] = useState('')
+  const [shelterUpdateLoading, setShelterUpdateLoading] = useState(false)
+  const [shelterUpdateSuccess, setShelterUpdateSuccess] = useState('')
+  const [shelterUpdateError, setShelterUpdateError] = useState('')
   const [nearestVehicleResult, setNearestVehicleResult] = useState(null)
   const [nearestVehicleLoading, setNearestVehicleLoading] = useState(false)
   const [nearestVehicleError, setNearestVehicleError] = useState('')
@@ -319,6 +348,28 @@ function App() {
     }
   }
 
+  const fetchShelters = async () => {
+    setSheltersLoading(true)
+    setSheltersError('')
+
+    try {
+      const response = await fetch('http://127.0.0.1:8000/shelters')
+      if (!response.ok) {
+        throw new Error(`Shelter request failed with status ${response.status}`)
+      }
+
+      const data = await response.json()
+      const nextShelters = Array.isArray(data) ? data : Array.isArray(data.value) ? data.value : []
+      setShelters(nextShelters)
+      setSelectedShelterId((currentId) => currentId && nextShelters.some((shelter) => shelter.shelter_id === currentId) ? currentId : nextShelters[0]?.shelter_id || '')
+    } catch (error) {
+      setShelters([])
+      setSheltersError(error instanceof Error ? error.message : 'Unable to load emergency shelters.')
+    } finally {
+      setSheltersLoading(false)
+    }
+  }
+
   useEffect(() => {
     const fetchHospitals = async () => {
       try {
@@ -383,6 +434,7 @@ function App() {
     fetchAvailableTeams()
     fetchResources()
     fetchVehicles()
+    fetchShelters()
     fetchMissions()
   }, [])
 
@@ -428,12 +480,85 @@ function App() {
     }
   }, [selectedVehicleId, vehicles])
 
+  useEffect(() => {
+    const selectedShelter = shelters.find((shelter) => shelter.shelter_id === selectedShelterId)
+    if (selectedShelter) {
+      setShelterCapacity(String(selectedShelter.available_capacity))
+    }
+  }, [selectedShelterId, shelters])
+
   const handleAction = (action) => setNotice(`${action} queued for command review.`)
 
   const selectVehicle = (vehicleId) => {
     setSelectedVehicleId(vehicleId)
     setVehicleUpdateSuccess('')
     setVehicleUpdateError('')
+  }
+
+  const selectShelter = (shelterId) => {
+    setSelectedShelterId(shelterId)
+    setShelterUpdateSuccess('')
+    setShelterUpdateError('')
+  }
+
+  const findNearestShelter = async () => {
+    const latitude = Number(shelterNearestLatitude)
+    const longitude = Number(shelterNearestLongitude)
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      setNearestShelterError('Enter a valid latitude and longitude.')
+      setNearestShelter(null)
+      return
+    }
+
+    setNearestShelterLoading(true)
+    setNearestShelterError('')
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/nearest-shelter?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}`)
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.detail || `Nearest shelter request failed with status ${response.status}`)
+      }
+      setNearestShelter(data)
+    } catch (error) {
+      setNearestShelter(null)
+      setNearestShelterError(error instanceof Error ? error.message : 'Unable to find the nearest shelter.')
+    } finally {
+      setNearestShelterLoading(false)
+    }
+  }
+
+  const updateShelterCapacity = async () => {
+    const capacity = Number(shelterCapacity)
+    const selectedShelter = shelters.find((shelter) => shelter.shelter_id === selectedShelterId)
+    if (!selectedShelter) {
+      setShelterUpdateError('Select a shelter first.')
+      return
+    }
+    if (!Number.isInteger(capacity) || capacity < 0 || capacity > selectedShelter.capacity) {
+      setShelterUpdateError(`Enter an available capacity from 0 to ${selectedShelter.capacity}.`)
+      return
+    }
+
+    setShelterUpdateLoading(true)
+    setShelterUpdateSuccess('')
+    setShelterUpdateError('')
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/shelters/${encodeURIComponent(selectedShelterId)}/capacity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ available_capacity: capacity }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.detail || `Shelter capacity update failed with status ${response.status}`)
+      }
+      setShelterUpdateSuccess(`${data.name || data.shelter_id} capacity updated successfully.`)
+      await fetchShelters()
+    } catch (error) {
+      setShelterUpdateError(error instanceof Error ? error.message : 'Unable to update shelter capacity.')
+    } finally {
+      setShelterUpdateLoading(false)
+    }
   }
 
   const updateVehicle = async (operation) => {
@@ -982,6 +1107,7 @@ function App() {
           <RescueRoutePlanning {...routePlanningForm} onChange={(field, value) => setRoutePlanningForm((currentForm) => ({ ...currentForm, [field]: value }))} onPlan={planRescueRoute} loading={routePlanningLoading} error={routePlanningError} result={routePlanningResult} />
           <AvailableRescueTeams teams={teams} loading={teamsLoading} error={teamsError} onRefresh={fetchAvailableTeams} />
           <EmergencyVehicleTracking vehicles={vehicles} loading={vehiclesLoading} error={vehiclesError} selectedVehicleId={selectedVehicleId} onVehicleChange={selectVehicle} latitude={vehicleLatitude} longitude={vehicleLongitude} onLatitudeChange={setVehicleLatitude} onLongitudeChange={setVehicleLongitude} status={vehicleStatus} onStatusChange={setVehicleStatus} onRefresh={fetchVehicles} onUpdateLocation={() => updateVehicle('location')} onUpdateStatus={() => updateVehicle('status')} updateLoading={vehicleUpdateLoading} success={vehicleUpdateSuccess} updateError={vehicleUpdateError} />
+          <EmergencyShelterManagement shelters={shelters} loading={sheltersLoading} error={sheltersError} selectedShelterId={selectedShelterId} onShelterChange={selectShelter} capacity={shelterCapacity} onCapacityChange={setShelterCapacity} nearestLatitude={shelterNearestLatitude} nearestLongitude={shelterNearestLongitude} onNearestLatitudeChange={setShelterNearestLatitude} onNearestLongitudeChange={setShelterNearestLongitude} nearestShelter={nearestShelter} nearestLoading={nearestShelterLoading} nearestError={nearestShelterError} onFindNearest={findNearestShelter} onRefresh={fetchShelters} onUpdateCapacity={updateShelterCapacity} updateLoading={shelterUpdateLoading} success={shelterUpdateSuccess} updateError={shelterUpdateError} />
           <ResourceAllocationDashboard missions={missions} selectedMissionId={selectedAllocationMissionId} onMissionChange={(missionId) => { setSelectedAllocationMissionId(missionId); setMissionAllocationError(''); setMissionAllocationResult(null); setAllocationReleaseError(''); setAllocationCancellationError('') }} allocations={missionAllocations} loading={missionAllocationsLoading} error={missionAllocationsError} onRefresh={() => fetchMissionAllocations(selectedAllocationMissionId)} onRelease={releaseResourceAllocation} onCancel={cancelResourceAllocation} releasingId={releasingAllocationId} cancellingId={cancellingAllocationId} releaseError={allocationReleaseError} cancellationError={allocationCancellationError} />
         <section className="welcome-row"><div><span className="eyebrow">COMMAND OVERVIEW / 06 SEP 2026</span><h1>Good afternoon, Commander.</h1><p>Real-time operational overview for the metropolitan response network.</p></div><div className="weather"><span className="weather-icon">☼</span><div><strong>28°C</strong><span>Clear skies · Visibility 12 km</span></div></div></section>
         <section className="metrics-grid" aria-label="Operational summary"><MetricCard label="Active Missions" value="12" detail="3 critical priority" icon="⌁" tone="red" /><MetricCard label="Rescue Teams" value="08" detail="of 14 total teams" icon="♙" tone="teal" /><MetricCard label="Available Vehicles" value="23" detail="4 currently deployed" icon="▣" tone="blue" /><MetricCard label="Emergency Resources" value="94%" detail="Readiness level" icon="◈" tone="amber" /></section>
