@@ -102,18 +102,20 @@ def _base_request_kwargs() -> dict:
 
 def test_successful_mission_linked_allocation_is_stored() -> None:
     mission = _create_mission()
+    resource_id = "resource-food-ny-01"
+    quantity = 100
 
     allocation = allocate_resource_to_mission(
-        mission.mission_id, "resource-food-ny-01", 100
+        mission.mission_id, resource_id, quantity
     )
 
     assert allocation.allocation_id == "allocation-0001"
-    assert allocation.resource_id == "resource-food-ny-01"
-    assert allocation.quantity == 100
+    assert allocation.resource_id == resource_id
+    assert allocation.quantity == quantity
     assert allocation.mission_id == mission.mission_id
     assert allocation.status == ResourceAllocationStatus.ALLOCATED
     assert isinstance(allocation.allocated_at, datetime)
-    assert allocation.allocation_id in allocation_service._ALLOCATIONS
+    assert allocation_service._ALLOCATIONS[allocation.allocation_id] == allocation
 
 
 def test_mission_linked_allocation_uses_missions_disaster_id() -> None:
@@ -123,7 +125,7 @@ def test_mission_linked_allocation_uses_missions_disaster_id() -> None:
         mission.mission_id, "resource-food-ny-01", 100
     )
 
-    assert allocation.disaster_id == "disaster-specific"
+    assert allocation.disaster_id == mission.disaster_id
 
 
 def test_mission_linked_allocation_decreases_inventory() -> None:
@@ -157,10 +159,17 @@ def test_unknown_mission_fails_without_mutating_inventory_or_records() -> None:
 
 def test_unknown_resource_fails_without_mutating_inventory_or_records() -> None:
     mission = _create_mission()
+    resource = next(
+        item
+        for item in emergency_resource_service._RESOURCES
+        if item.resource_id == "resource-food-ny-01"
+    )
+    original_quantity = resource.available_quantity
 
     with pytest.raises(ValueError, match="no suitable resource available"):
         allocate_resource_to_mission(mission.mission_id, "missing-resource", 100)
 
+    assert resource.available_quantity == original_quantity
     assert allocation_service._ALLOCATIONS == {}
 
 
@@ -239,8 +248,23 @@ def test_release_allocation_preserves_record_fields() -> None:
 
 
 def test_release_unknown_allocation_fails() -> None:
+    original_allocations = {
+        allocation_id: allocation.model_copy(deep=True)
+        for allocation_id, allocation in allocation_service._ALLOCATIONS.items()
+    }
+    original_resource_quantities = {
+        resource.resource_id: resource.available_quantity
+        for resource in emergency_resource_service._RESOURCES
+    }
+
     with pytest.raises(ValueError, match="does not exist"):
         release_allocation("missing-allocation")
+
+    assert allocation_service._ALLOCATIONS == original_allocations
+    assert {
+        resource.resource_id: resource.available_quantity
+        for resource in emergency_resource_service._RESOURCES
+    } == original_resource_quantities
 
 
 def test_release_already_released_allocation_fails_without_mutation() -> None:
@@ -347,8 +371,23 @@ def test_cancel_allocation_preserves_record_fields() -> None:
 
 
 def test_cancel_unknown_allocation_fails() -> None:
+    original_allocations = {
+        allocation_id: allocation.model_copy(deep=True)
+        for allocation_id, allocation in allocation_service._ALLOCATIONS.items()
+    }
+    original_resource_quantities = {
+        resource.resource_id: resource.available_quantity
+        for resource in emergency_resource_service._RESOURCES
+    }
+
     with pytest.raises(ValueError, match="does not exist"):
         cancel_allocation("missing-allocation")
+
+    assert allocation_service._ALLOCATIONS == original_allocations
+    assert {
+        resource.resource_id: resource.available_quantity
+        for resource in emergency_resource_service._RESOURCES
+    } == original_resource_quantities
 
 
 def test_cancel_released_allocation_fails_without_mutation() -> None:
