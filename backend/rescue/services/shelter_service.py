@@ -6,7 +6,7 @@ to find the nearest shelter with emergency availability and open capacity.
 
 from __future__ import annotations
 
-from backend.rescue.models.shelter import Shelter
+from backend.rescue.models.shelter import EmergencyShelter, Shelter, ShelterStatus
 from backend.rescue.utils.geo import haversine_km
 
 
@@ -59,6 +59,97 @@ _SHELTERS: list[Shelter] = [
         emergency_available=True,
     ),
 ]
+
+_EMERGENCY_SHELTERS: list[EmergencyShelter] = [
+    EmergencyShelter(
+        shelter_id="shelter-blr-01",
+        name="Bengaluru East Community Relief Center",
+        latitude=12.9856,
+        longitude=77.6050,
+        capacity=500,
+        available_capacity=220,
+        status=ShelterStatus.ACCEPTING_EVACUEES,
+    ),
+    EmergencyShelter(
+        shelter_id="shelter-blr-02",
+        name="Bengaluru South Sports Complex Shelter",
+        latitude=12.9352,
+        longitude=77.6245,
+        capacity=350,
+        available_capacity=140,
+        status=ShelterStatus.ACCEPTING_EVACUEES,
+    ),
+    EmergencyShelter(
+        shelter_id="shelter-blr-03",
+        name="Bengaluru North Civic Evacuation Hall",
+        latitude=13.0205,
+        longitude=77.6400,
+        capacity=280,
+        available_capacity=0,
+        status=ShelterStatus.FULL,
+    ),
+    EmergencyShelter(
+        shelter_id="shelter-blr-04",
+        name="Bengaluru West Relief School",
+        latitude=12.9568,
+        longitude=77.5195,
+        capacity=240,
+        available_capacity=80,
+        status=ShelterStatus.CLOSED,
+    ),
+]
+
+
+def get_shelters() -> list[EmergencyShelter]:
+    """Return all emergency shelters in registry order."""
+    return list(_EMERGENCY_SHELTERS)
+
+
+def get_available_shelters() -> list[EmergencyShelter]:
+    """Return shelters accepting evacuees with open capacity."""
+    return [
+        shelter
+        for shelter in _EMERGENCY_SHELTERS
+        if shelter.status in {ShelterStatus.ACCEPTING_EVACUEES, ShelterStatus.AVAILABLE}
+        and shelter.available_capacity > 0
+    ]
+
+
+def get_emergency_shelter(shelter_id: str) -> EmergencyShelter:
+    """Return an emergency shelter by ID."""
+    for shelter in _EMERGENCY_SHELTERS:
+        if shelter.shelter_id == shelter_id:
+            return shelter
+    raise ValueError(f"Emergency shelter '{shelter_id}' does not exist")
+
+
+def update_available_capacity(shelter_id: str, available_capacity: int) -> EmergencyShelter:
+    """Update a shelter's available capacity."""
+    shelter = get_emergency_shelter(shelter_id)
+    if available_capacity < 0 or available_capacity > shelter.capacity:
+        raise ValueError("available_capacity must be between 0 and capacity")
+    shelter.available_capacity = available_capacity
+    return shelter
+
+
+def get_nearest_available_emergency_shelter(
+    latitude: float, longitude: float
+) -> tuple[EmergencyShelter, float]:
+    """Return the nearest accepting shelter and its distance in kilometres."""
+    if not (-90.0 <= latitude <= 90.0):
+        raise ValueError("latitude must be between -90 and 90")
+    if not (-180.0 <= longitude <= 180.0):
+        raise ValueError("longitude must be between -180 and 180")
+
+    available_shelters = get_available_shelters()
+    if not available_shelters:
+        raise ValueError("no suitable shelter available")
+
+    shelter = min(
+        available_shelters,
+        key=lambda item: haversine_km(latitude, longitude, item.latitude, item.longitude),
+    )
+    return shelter, haversine_km(latitude, longitude, shelter.latitude, shelter.longitude)
 
 
 def get_nearest_shelter(latitude: float, longitude: float) -> Shelter:

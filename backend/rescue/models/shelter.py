@@ -2,7 +2,36 @@
 
 from __future__ import annotations
 
+from enum import Enum
+
 from pydantic import BaseModel, Field, model_validator
+
+
+class ShelterStatus(str, Enum):
+    """Operational state of an emergency shelter."""
+
+    ACCEPTING_EVACUEES = "ACCEPTING_EVACUEES"
+    AVAILABLE = "AVAILABLE"
+    FULL = "FULL"
+    CLOSED = "CLOSED"
+
+
+class EmergencyShelter(BaseModel):
+    """Represents a shelter used for emergency evacuation management."""
+
+    shelter_id: str = Field(..., min_length=1, description="Unique shelter identifier")
+    name: str = Field(..., min_length=1, description="Human-readable shelter name")
+    latitude: float = Field(..., ge=-90.0, le=90.0)
+    longitude: float = Field(..., ge=-180.0, le=180.0)
+    capacity: int = Field(..., ge=0)
+    available_capacity: int = Field(..., ge=0)
+    status: ShelterStatus
+
+    @model_validator(mode="after")
+    def _check_capacity(self) -> EmergencyShelter:
+        if self.available_capacity > self.capacity:
+            raise ValueError("available_capacity must not exceed capacity")
+        return self
 
 
 class Shelter(BaseModel):
