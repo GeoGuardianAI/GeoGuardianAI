@@ -12,6 +12,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, field_validator
 
+from backend.rescue.models.emergency_resource import EmergencyResource, ResourceType
 from backend.rescue.models.hospital import Hospital
 from backend.rescue.models.rescue_team import RescueTeam
 
@@ -73,6 +74,10 @@ class AllocationRequest(BaseModel):
         default=None,
         description="Optional rescue specialization required for a recommended team",
     )
+    resource_type: ResourceType | None = Field(
+        default=None,
+        description="Optional emergency resource type to recommend",
+    )
 
     @field_validator("disaster_id", "disaster_type")
     @classmethod
@@ -96,6 +101,10 @@ class AllocationRecommendation(BaseModel):
     )
     recommended_rescue_team: RescueTeam = Field(
         ..., description="Best available rescue team recommendation for the event"
+    )
+    recommended_resources: list[EmergencyResource] = Field(
+        default_factory=list,
+        description="Available emergency resources ordered by distance",
     )
     priority_score: float = Field(
         ...,

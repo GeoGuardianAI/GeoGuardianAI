@@ -10,6 +10,7 @@ import backend.rescue.services.emergency_resource_service as emergency_resource_
 import backend.rescue.services.mission_service as mission_service
 import backend.rescue.services.rescue_team_service as rescue_team_service
 from backend.rescue.models.allocation import AllocationRequest, ResourceAllocationStatus
+from backend.rescue.models.emergency_resource import ResourceType
 from backend.rescue.models.hospital import Hospital
 from backend.rescue.models.rescue_team import RescueTeam
 from backend.rescue.services.allocation_service import (
@@ -455,6 +456,46 @@ def test_recommendation_contains_correct_disaster_id() -> None:
     recommendation = recommend_resources(request)
 
     assert recommendation.disaster_id == request.disaster_id
+
+
+def test_recommended_resources_are_ranked_by_nearest_eligible_resource() -> None:
+    request = AllocationRequest(**_base_request_kwargs())
+
+    recommendation = recommend_resources(request)
+
+    assert recommendation.recommended_resources[0].resource_id == "resource-food-ny-01"
+    assert all(resource.available_quantity > 0 for resource in recommendation.recommended_resources)
+
+
+def test_recommended_resources_exclude_insufficient_inventory() -> None:
+    request = AllocationRequest(**_base_request_kwargs())
+
+    recommendation = recommend_resources(request)
+
+    assert all(
+        resource.resource_id != "resource-water-sea-02"
+        for resource in recommendation.recommended_resources
+    )
+
+
+def test_recommended_resources_respect_requested_resource_type() -> None:
+    request = AllocationRequest(
+        **{**_base_request_kwargs(), "resource_type": ResourceType.WATER}
+    )
+
+    recommendation = recommend_resources(request)
+
+    assert recommendation.recommended_resources
+    assert all(
+        resource.resource_type == ResourceType.WATER
+        for resource in recommendation.recommended_resources
+    )
+    assert recommendation.recommended_resources[0].resource_id == "resource-water-la-01"
+
+
+def test_invalid_recommendation_coordinates_are_rejected() -> None:
+    with pytest.raises(ValidationError):
+        AllocationRequest(**{**_base_request_kwargs(), "latitude": 90.1})
 
 
 def test_priority_score_is_between_0_and_100() -> None:

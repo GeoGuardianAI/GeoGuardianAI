@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from backend.rescue.models.allocation import AllocationRecommendation, AllocationRequest
 from backend.rescue.services.allocation_service import (
+    NoSuitableEmergencyResourceError,
     NoSuitableHospitalError,
     NoSuitableRescueTeamError,
     recommend_resources,
@@ -55,6 +56,14 @@ def allocate_resource(request: AllocationRequest) -> AllocationRecommendation:
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "error": "No suitable hospital exists for the requested coordinates.",
+                "message": str(exc),
+            },
+        ) from exc
+    except NoSuitableEmergencyResourceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": "No suitable emergency resource exists for the request.",
                 "message": str(exc),
             },
         ) from exc

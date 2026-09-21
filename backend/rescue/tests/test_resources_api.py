@@ -2,6 +2,7 @@
 
 from fastapi.testclient import TestClient
 
+from backend.rescue.services import emergency_resource_service
 from backend.rescue.main import app
 
 client = TestClient(app)
@@ -32,11 +33,43 @@ def test_valid_allocation_request_returns_http_200() -> None:
     assert data["disaster_id"] == "disaster-001"
     assert data["recommended_hospital"] is not None
     assert data["recommended_rescue_team"] is not None
+    assert data["recommended_resources"]
+    assert data["recommended_resources"][0]["resource_id"] == "resource-food-ny-01"
     assert data["recommended_rescue_team"]["team_id"] == "rescue-ny-01"
     assert data["recommended_rescue_team"]["availability"] == "AVAILABLE"
     assert 0 <= data["priority_score"] <= 100
     assert data["estimated_distance_km"] >= 0
     assert data["reasoning"].strip() != ""
+
+
+def test_recommendation_excludes_depleted_resources_without_mutating_inventory() -> None:
+    original_quantities = {
+        resource.resource_id: resource.available_quantity
+        for resource in emergency_resource_service._RESOURCES
+    }
+
+    response = client.post("/allocate-resource", json=_valid_payload())
+
+    assert response.status_code == 200
+    resource_ids = [item["resource_id"] for item in response.json()["recommended_resources"]]
+    assert "resource-water-sea-02" not in resource_ids
+    assert {
+        resource.resource_id: resource.available_quantity
+        for resource in emergency_resource_service._RESOURCES
+    } == original_quantities
+
+
+def test_recommendation_filters_resources_by_requested_type() -> None:
+    response = client.post(
+        "/allocate-resource",
+        json=_valid_payload(resource_type="WATER"),
+    )
+
+    assert response.status_code == 200
+    resources = response.json()["recommended_resources"]
+    assert resources
+    assert all(resource["resource_type"] == "WATER" for resource in resources)
+    assert resources[0]["resource_id"] == "resource-water-la-01"
 
 
 def test_nonexistent_specialization_returns_http_404() -> None:

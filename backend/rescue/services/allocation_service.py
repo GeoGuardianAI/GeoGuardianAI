@@ -45,6 +45,10 @@ class NoSuitableRescueTeamError(ResourceAllocationError):
     """Raised when no suitable rescue team is available for the allocation request."""
 
 
+class NoSuitableEmergencyResourceError(ResourceAllocationError):
+    """Raised when no available emergency resource matches the request."""
+
+
 def _next_allocation_id() -> str:
     """Generate a deterministic allocation ID in a simple incrementing sequence."""
     global _NEXT_ALLOCATION_NUMBER
@@ -189,6 +193,17 @@ def recommend_resources(request: AllocationRequest) -> AllocationRecommendation:
             "No suitable rescue team exists for the requested disaster coordinates and specialization."
         )
 
+    try:
+        recommended_resources = emergency_resource_service.get_nearby_resources(
+            request.latitude,
+            request.longitude,
+            request.resource_type,
+        )
+    except ValueError as exc:
+        raise NoSuitableEmergencyResourceError(
+            "No suitable emergency resource exists for the requested coordinates and type."
+        ) from exc
+
     scored_teams = [(team, *_score_team(team, request)) for team in matched_teams]
     best_team, score, distance_km = sorted(
         scored_teams,
@@ -213,6 +228,7 @@ def recommend_resources(request: AllocationRequest) -> AllocationRecommendation:
         disaster_id=request.disaster_id,
         recommended_hospital=hospital,
         recommended_rescue_team=best_team,
+        recommended_resources=recommended_resources,
         priority_score=round(priority_score, 2),
         reasoning=" ".join(reasoning_parts),
         estimated_distance_km=round(distance_km, 2),
