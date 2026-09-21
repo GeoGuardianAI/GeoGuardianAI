@@ -11,6 +11,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, field_validator
 
+from backend.rescue.models.route_optimization import RouteCandidate
+
 
 class RouteStatus(str, Enum):
     """Operational status for a route assessment in the rescue domain."""
@@ -37,6 +39,17 @@ class RouteRequest(BaseModel):
     disaster_id: str | None = Field(
         default=None,
         description="Optional identifier for the disaster event associated with the route",
+    )
+    risk_tolerance: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Maximum preferred route risk from 0 to 1",
+    )
+    route_candidates: list[RouteCandidate] | None = Field(
+        default=None,
+        min_length=1,
+        description="Optional candidate routes for risk-aware selection",
     )
 
     @field_validator("disaster_id")

@@ -130,6 +130,35 @@ def test_route_request_whitespace_only_disaster_id_is_rejected() -> None:
         )
 
 
+def test_route_request_invalid_risk_tolerance_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        RouteRequest(
+            origin_latitude=0.0,
+            origin_longitude=0.0,
+            destination_latitude=0.0,
+            destination_longitude=0.0,
+            risk_tolerance=1.1,
+        )
+
+
+def test_route_request_invalid_candidate_coordinates_are_rejected() -> None:
+    with pytest.raises(ValidationError):
+        RouteRequest(
+            origin_latitude=91.0,
+            origin_longitude=0.0,
+            destination_latitude=0.0,
+            destination_longitude=0.0,
+            route_candidates=[
+                {
+                    "route_id": "route-a",
+                    "distance_km": 10.0,
+                    "estimated_duration_minutes": 10.0,
+                    "route_risk_score": 0.2,
+                }
+            ],
+        )
+
+
 def test_route_response_valid_response_can_be_created() -> None:
     response = RouteResponse(
         distance_km=150.25,

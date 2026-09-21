@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from backend.rescue.models.route import RouteRequest, RouteResponse
+from backend.rescue.models.route_optimization import RouteOptimizationRequest
+from backend.rescue.services.route_optimization_service import optimize_route
 from backend.rescue.utils.geo import haversine_km
 
 
@@ -37,6 +39,26 @@ class MockRoutingService:
         This is a placeholder implementation intended for local development and
         deterministic testing. It does not call any external provider.
         """
+        if request.route_candidates is not None:
+            optimization_request = RouteOptimizationRequest(
+                origin_latitude=request.origin_latitude,
+                origin_longitude=request.origin_longitude,
+                destination_latitude=request.destination_latitude,
+                destination_longitude=request.destination_longitude,
+                disaster_id=request.disaster_id,
+                risk_tolerance=request.risk_tolerance,
+            )
+            optimization = optimize_route(optimization_request, request.route_candidates)
+            selected_route = optimization.selected_route
+            route_status = "OK" if selected_route.route_risk_score < 0.7 else "CAUTION"
+            return RouteResponse(
+                distance_km=selected_route.distance_km,
+                estimated_duration_minutes=selected_route.estimated_duration_minutes,
+                route_risk_score=selected_route.route_risk_score,
+                route_status=route_status,
+                explanation=optimization.reasoning,
+            )
+
         distance_km = haversine_km(
             request.origin_latitude,
             request.origin_longitude,

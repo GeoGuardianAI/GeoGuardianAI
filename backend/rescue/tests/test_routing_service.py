@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from backend.rescue.models.route import RouteRequest, RouteResponse, RouteStatus
+from backend.rescue.models.route_optimization import RouteCandidate
 from backend.rescue.services.routing_service import (
     DEFAULT_AVERAGE_SPEED_KMH,
     DEFAULT_RISK_BASELINE,
@@ -266,3 +267,77 @@ def test_configured_risk_baseline_affects_resulting_risk_score() -> None:
 
 def test_default_risk_baseline_matches_expected_constant() -> None:
     assert DEFAULT_RISK_BASELINE == 0.15
+
+
+def test_risk_aware_route_selection_prefers_lower_risk_when_cost_is_comparable() -> None:
+    request = _valid_request(
+        route_candidates=[
+            RouteCandidate(
+                route_id="short-risky",
+                distance_km=10.0,
+                estimated_duration_minutes=10.0,
+                route_risk_score=0.8,
+            ),
+            RouteCandidate(
+                route_id="slightly-longer-safe",
+                distance_km=12.0,
+                estimated_duration_minutes=12.0,
+                route_risk_score=0.1,
+            ),
+        ]
+    )
+
+    response = calculate_route(request)
+
+    assert response.distance_km == 12.0
+    assert response.route_risk_score == 0.1
+    assert "slightly-longer-safe" in response.explanation
+
+
+def test_risk_aware_route_scoring_accounts_for_distance_duration_and_risk() -> None:
+    request = _valid_request(
+        route_candidates=[
+            RouteCandidate(
+                route_id="balanced",
+                distance_km=11.0,
+                estimated_duration_minutes=11.0,
+                route_risk_score=0.2,
+            ),
+            RouteCandidate(
+                route_id="short-risky",
+                distance_km=10.0,
+                estimated_duration_minutes=10.0,
+                route_risk_score=0.9,
+            ),
+        ]
+    )
+
+    response = calculate_route(request)
+
+    assert response.distance_km == 11.0
+    assert response.route_risk_score == 0.2
+
+
+def test_risk_aware_route_selection_is_deterministic() -> None:
+    request = _valid_request(
+        route_candidates=[
+            RouteCandidate(
+                route_id="z-route",
+                distance_km=10.0,
+                estimated_duration_minutes=10.0,
+                route_risk_score=0.2,
+            ),
+            RouteCandidate(
+                route_id="a-route",
+                distance_km=10.0,
+                estimated_duration_minutes=10.0,
+                route_risk_score=0.2,
+            ),
+        ]
+    )
+
+    first = calculate_route(request)
+    second = calculate_route(request)
+
+    assert first == second
+    assert "a-route" in first.explanation

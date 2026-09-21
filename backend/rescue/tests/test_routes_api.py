@@ -165,3 +165,45 @@ def test_repeating_the_same_request_produces_the_same_response() -> None:
     second = client.post("/calculate-route", json=payload)
 
     assert first.json() == second.json()
+
+
+def test_route_api_preserves_legacy_response_with_no_candidates() -> None:
+    response = client.post("/calculate-route", json=_valid_payload())
+
+    assert response.status_code == 200
+    assert set(response.json()) >= {
+        "distance_km",
+        "estimated_duration_minutes",
+        "route_risk_score",
+        "route_status",
+        "explanation",
+    }
+
+
+def test_route_api_returns_risk_aware_selected_route_metrics() -> None:
+    response = client.post(
+        "/calculate-route",
+        json=_valid_payload(
+            risk_tolerance=0.5,
+            route_candidates=[
+                {
+                    "route_id": "short-risky",
+                    "distance_km": 10.0,
+                    "estimated_duration_minutes": 10.0,
+                    "route_risk_score": 0.8,
+                },
+                {
+                    "route_id": "slightly-longer-safe",
+                    "distance_km": 12.0,
+                    "estimated_duration_minutes": 12.0,
+                    "route_risk_score": 0.1,
+                },
+            ],
+        ),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["distance_km"] == 12.0
+    assert data["route_risk_score"] == 0.1
+    assert "slightly-longer-safe" in data["explanation"]
