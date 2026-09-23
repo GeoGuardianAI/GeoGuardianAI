@@ -22,12 +22,40 @@ const missionStatusActions = {
   ],
 }
 
+const navigationItems = [
+  { id: 'dashboard', label: 'Main Dashboard', icon: '⌂' },
+  { id: 'hospital', label: 'Nearest Hospital', icon: '✚' },
+  { id: 'resources', label: 'Recommended Resources', icon: '◈' },
+  { id: 'route', label: 'Rescue Route Planning', icon: '⌁' },
+  { id: 'teams', label: 'Available Rescue Teams', icon: '♙' },
+  { id: 'deployment', label: 'Team Deployment', icon: '↗' },
+  { id: 'vehicles', label: 'Vehicle Tracking', icon: '▣' },
+  { id: 'shelters', label: 'Shelter Management', icon: '⌂' },
+  { id: 'allocation', label: 'Resource Allocation', icon: '＋' },
+]
+
 function Icon({ children }) {
   return <span className="icon" aria-hidden="true">{children}</span>
 }
 
 function PanelHeader({ eyebrow, title, action }) {
   return <div className="panel-header"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2></div>{action && <button className="text-button" type="button">{action} <span aria-hidden="true">↗</span></button>}</div>
+}
+
+function ModuleHeader({ moduleId }) {
+  const item = navigationItems.find((navigationItem) => navigationItem.id === moduleId)
+  const headers = {
+    hospital: ['MEDICAL DISPATCH', 'Locate the nearest hospital for an active response.'],
+    resources: ['RESOURCE RECOMMENDATION', 'Rank nearby supplies before committing inventory.'],
+    route: ['RISK-AWARE DISPATCH', 'Evaluate route distance, duration, and operational risk.'],
+    teams: ['FIELD PERSONNEL', 'Review team readiness and current mission assignments.'],
+    deployment: ['MISSION OPERATIONS', 'Assign a response team and coordinate the mission.'],
+    vehicles: ['FLEET OPERATIONS', 'Monitor vehicle readiness, location, and mission status.'],
+    shelters: ['EVACUATION NETWORK', 'Coordinate shelter capacity and evacuation support.'],
+    allocation: ['RESOURCE CONTROL', 'Recommend, allocate, release, or cancel mission resources.'],
+  }
+  const [eyebrow, description] = headers[moduleId] || ['OPERATIONS', 'Manage emergency response operations.']
+  return <section className="module-header"><div><span className="eyebrow">{eyebrow}</span><h1>{item?.label}</h1><p>{description}</p></div><span className="module-status"><i className="pulse-dot" /> ACTIVE WORKSPACE</span></section>
 }
 
 function MetricCard({ label, value, detail, icon, tone }) {
@@ -114,6 +142,15 @@ function ResourceAllocationDashboard({ missions, selectedMissionId, onMissionCha
   )
 }
 
+function ResourceAllocationWorkspace({ resources, missions, selectedResourceId, allocationQuantity, onResourceChange, onQuantityChange, onAllocateInventory, onAllocateMission, inventoryAllocationDisabled, missionAllocationDisabled, inventoryLoading, missionLoading, inventoryError, missionError, inventoryResult, missionResult, selectedMissionId, onMissionChange, children }) {
+  const selectedMission = missions.find((mission) => mission.mission_id === selectedMissionId)
+  return <div className="resource-workspace">
+    <section className="resource-control-strip"><div className="workflow-step"><span>01</span><div><strong>RECOMMEND</strong><small>Review available supplies</small></div></div><div className="workflow-step"><span>02</span><div><strong>ALLOCATE</strong><small>Commit to this mission</small></div></div><div className="workflow-step"><span>03</span><div><strong>RELEASE / CANCEL</strong><small>Manage mission resources</small></div></div></section>
+    <section className="resource-selection-grid"><div><span className="eyebrow">MISSION CONTEXT</span><label htmlFor="workspace-allocation-mission">Mission<select id="workspace-allocation-mission" value={selectedMissionId} onChange={(event) => onMissionChange(event.target.value)}><option value="">Select a mission</option>{missions.map((mission) => <option value={mission.mission_id} key={mission.mission_id}>{mission.mission_id} · {mission.disaster_id}</option>)}</select></label>{selectedMission ? <div className="selected-mission-strip"><strong>{selectedMission.disaster_id}</strong><span>{selectedMission.team_id} · {selectedMission.status} · {selectedMission.priority}</span></div> : <span className="muted">Select a mission to connect resource actions to an operation.</span>}</div><div><span className="eyebrow">AVAILABLE INVENTORY</span><div className="inventory-allocation-controls workspace-inventory-controls"><label htmlFor="workspace-allocation-resource">Resource<select id="workspace-allocation-resource" value={selectedResourceId} onChange={(event) => onResourceChange(event.target.value)}><option value="">Select a resource</option>{resources.map((resource) => <option value={resource.resource_id} key={resource.resource_id}>{resource.name} ({resource.available_quantity} available)</option>)}</select></label><label htmlFor="workspace-allocation-quantity">Quantity<input id="workspace-allocation-quantity" type="number" min="1" value={allocationQuantity} onChange={(event) => onQuantityChange(event.target.value)} /></label><button className="inventory-allocation-button" type="button" onClick={onAllocateInventory} disabled={inventoryAllocationDisabled || inventoryLoading}>{inventoryLoading ? 'Allocating...' : 'Allocate inventory'}</button><button className="inventory-allocation-button" type="button" onClick={onAllocateMission} disabled={missionAllocationDisabled || missionLoading}>{missionLoading ? 'Assigning...' : 'Allocate to mission'}</button></div>{inventoryError && <span className="inventory-feedback inventory-feedback-error">{inventoryError}</span>}{missionError && <span className="inventory-feedback inventory-feedback-error">{missionError}</span>}{inventoryResult && <span className="inventory-feedback inventory-feedback-success">{inventoryResult.quantity} units allocated from inventory.</span>}{missionResult && <span className="inventory-feedback inventory-feedback-success">Resource linked to {missionResult.mission_id}.</span>}</div></section>
+    {children}
+  </div>
+}
+
 const vehicleStatuses = ['AVAILABLE', 'ASSIGNED', 'IN_TRANSIT', 'MAINTENANCE', 'UNAVAILABLE']
 
 function EmergencyVehicleTracking({ vehicles, loading, error, selectedVehicleId, onVehicleChange, latitude, longitude, onLatitudeChange, onLongitudeChange, status, onStatusChange, onRefresh, onUpdateLocation, onUpdateStatus, updateLoading, success, updateError }) {
@@ -172,6 +209,24 @@ function TeamDeploymentPanel({ teams, missions, hospitals, vehicles, selectedTea
       {missions.length > 0 && <span className="muted deployment-mission-count">{missions.length} missions currently loaded.</span>}
     </section>
   )
+}
+
+function MissionOperationsDetails({ mission, selectedTeam, hospitals, vehicles, routeResult, allocations, missionAllocationsLoading, missionAllocationsError, onStatusChange, missionUpdatingId, onRelease, onCancel, releasingId, cancellingId }) {
+  if (!mission) return null
+  const actions = missionStatusActions[mission.status] || []
+  const hospital = hospitals.find((item) => item.hospital_id === mission.hospital_id)
+  const vehicle = vehicles.find((item) => item.vehicle_id === mission.vehicle_id)
+  return <section className="mission-operations-details">
+    <div className="mission-result-banner"><div><span className="route-result-badge">MISSION DEPLOYED</span><h3>Mission {mission.mission_id} is active in the operations workspace.</h3></div><span className={`badge ${(mission.priority || 'MEDIUM').toLowerCase()}`}>{mission.priority}</span></div>
+    <div className="mission-summary-grid">
+      <div><small>MISSION ID</small><strong>{mission.mission_id}</strong></div><div><small>DISASTER ID</small><strong>{mission.disaster_id}</strong></div><div><small>ASSIGNED TEAM</small><strong>{selectedTeam?.name || mission.team_id}</strong><span>{selectedTeam?.team_type || mission.team_id}</span></div><div><small>DESTINATION</small><strong>{mission.destination_latitude}, {mission.destination_longitude}</strong></div><div><small>PRIORITY</small><strong>{mission.priority}</strong></div><div><small>STATUS</small><strong className="status-live">{mission.status}</strong></div><div><small>HOSPITAL</small><strong>{hospital?.name || mission.hospital_id || 'Not linked'}</strong></div><div><small>VEHICLE</small><strong>{vehicle?.name || vehicle?.registration_number || mission.vehicle_id || 'Not linked'}</strong></div><div><small>CREATED</small><strong>{mission.created_at || 'Just now'}</strong></div>
+    </div>
+    <div className="mission-related-grid">
+      <section className="related-section"><PanelHeader eyebrow="MISSION STATUS" title="Status actions" />{missionUpdatingId === mission.mission_id ? <span className="muted">Updating mission status...</span> : <div className="status-actions">{actions.map((action) => <button className="text-button" type="button" key={action.status} onClick={() => onStatusChange(mission.mission_id, action.status)}>{action.label} <span aria-hidden="true">↗</span></button>)}{actions.length === 0 && <span className="muted">No further status actions available.</span>}</div>}</section>
+      <section className="related-section"><PanelHeader eyebrow="ROUTE LINK" title="Route information" />{routeResult ? <div className="related-metrics"><span><small>DISTANCE</small><b>{routeResult.data?.distance_km || routeResult.distance_km} km</b></span><span><small>DURATION</small><b>{routeResult.data?.estimated_duration_minutes || routeResult.estimated_duration_minutes} min</b></span><span><small>RISK</small><b>{routeResult.data?.route_risk_score || routeResult.route_risk_score}</b></span></div> : <span className="muted">No route result linked to this mission yet.</span>}</section>
+      <section className="related-section mission-resource-history"><PanelHeader eyebrow="MISSION RESOURCES" title="Allocated resources" />{missionAllocationsLoading && <span className="muted">Loading mission allocations...</span>}{missionAllocationsError && <span className="inventory-feedback inventory-feedback-error">{missionAllocationsError}</span>}{!missionAllocationsLoading && !missionAllocationsError && allocations.length === 0 && <span className="muted">No resources allocated to this mission.</span>}{!missionAllocationsLoading && !missionAllocationsError && allocations.map((allocation) => <div className="related-allocation-row" key={allocation.allocation_id}><div><strong>{allocation.resource_id}</strong><span>{allocation.quantity} units · {allocation.status}</span></div>{allocation.status === 'ALLOCATED' && <div className="allocation-actions"><button className="allocation-release-button" type="button" onClick={() => onRelease(allocation.allocation_id)} disabled={releasingId === allocation.allocation_id || cancellingId === allocation.allocation_id}>Release</button><button className="allocation-cancel-button" type="button" onClick={() => onCancel(allocation.allocation_id)} disabled={releasingId === allocation.allocation_id || cancellingId === allocation.allocation_id}>Cancel</button></div>}</div>)}</section>
+    </div>
+  </section>
 }
 
 function RescueRoutePlanning({ originLatitude, originLongitude, destinationLatitude, destinationLongitude, riskTolerance, candidateCount, onChange, onPlan, loading, error, result }) {
@@ -242,6 +297,8 @@ function EmergencyMap({ hospitals, vehicles }) {
 }
 
 function App() {
+  const [currentTime, setCurrentTime] = useState(() => new Date())
+  const [activeModule, setActiveModule] = useState('dashboard')
   const [notice, setNotice] = useState('All systems are connected and ready for dispatch.')
   const [hospitals, setHospitals] = useState([])
   const [hospitalsLoading, setHospitalsLoading] = useState(true)
@@ -342,6 +399,25 @@ function App() {
   const [allocationReleaseError, setAllocationReleaseError] = useState('')
   const [cancellingAllocationId, setCancellingAllocationId] = useState('')
   const [allocationCancellationError, setAllocationCancellationError] = useState('')
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const currentDate = new Intl.DateTimeFormat(undefined, {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(currentTime)
+  const currentClock = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(currentTime)
+  const currentHour = currentTime.getHours()
+  const greeting = currentHour < 12 ? 'Good morning' : currentHour < 18 ? 'Good afternoon' : 'Good evening'
 
   const fetchVehicles = async () => {
     setVehiclesLoading(true)
@@ -536,6 +612,28 @@ function App() {
     setShelterUpdateError('')
   }
 
+  const clearQuickActionResults = () => {
+    setNearestHospitalResult(null)
+    setNearestHospitalError('')
+    setNearestHospitalLoading(false)
+    setNearestVehicleResult(null)
+    setNearestVehicleError('')
+    setNearestVehicleLoading(false)
+    setAllocationResult(null)
+    setAllocationError('')
+    setAllocationLoading(false)
+    setDeploymentResult(null)
+    setDeploymentError('')
+    setDeploymentSuccess('')
+    setDeployLoading(false)
+    setRouteResult(null)
+    setRouteError('')
+    setRouteLoading(false)
+    setRiskResult(null)
+    setRiskError('')
+    setRiskLoading(false)
+  }
+
   const findNearestShelter = async () => {
     const latitude = Number(shelterNearestLatitude)
     const longitude = Number(shelterNearestLongitude)
@@ -637,6 +735,8 @@ function App() {
   
 
   const findNearestHospital = async () => {
+    navigateTo('hospital')
+    clearQuickActionResults()
     const latitude = Number(nearestHospitalLatitude)
     const longitude = Number(nearestHospitalLongitude)
 
@@ -667,6 +767,8 @@ function App() {
   }
 
   const findNearestVehicle = async () => {
+    navigateTo('vehicles')
+    clearQuickActionResults()
     setNearestVehicleLoading(true)
     setNearestVehicleError('')
 
@@ -688,6 +790,8 @@ function App() {
   }
 
   const deployTeam = async () => {
+    navigateTo('deployment')
+    clearQuickActionResults()
     const destinationLatitude = Number(deploymentForm.destinationLatitude)
     const destinationLongitude = Number(deploymentForm.destinationLongitude)
 
@@ -730,6 +834,7 @@ function App() {
       }
 
       setDeploymentResult(data)
+      setSelectedAllocationMissionId(data.mission_id)
       setDeploymentSuccess(`Mission ${data.mission_id} created successfully.`)
       setNotice(`Mission ${data.mission_id} assigned to ${data.team_id}.`)
       await Promise.all([fetchAvailableTeams(), fetchMissions()])
@@ -741,6 +846,8 @@ function App() {
   }
 
   const allocateResource = async () => {
+    navigateTo('allocation')
+    clearQuickActionResults()
     setAllocationLoading(true)
     setAllocationError('')
 
@@ -972,6 +1079,8 @@ function App() {
   }
 
   const optimizeRoute = async () => {
+    navigateTo('route')
+    clearQuickActionResults()
     setRouteLoading(true)
     setRouteError('')
 
@@ -1003,6 +1112,8 @@ function App() {
   }
 
   const calculateRiskPriority = async () => {
+    navigateTo('dashboard')
+    clearQuickActionResults()
     setRiskLoading(true)
     setRiskError('')
 
@@ -1147,25 +1258,53 @@ function App() {
     || inventoryQuantity < 1
     || inventoryQuantity > selectedResource.available_quantity
 
+  const navigateTo = (moduleId) => {
+    setActiveModule(moduleId)
+    document.getElementById(moduleId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  useEffect(() => {
+    const sections = navigationItems.map((item) => document.getElementById(item.id)).filter(Boolean)
+    const updateActiveSection = () => {
+      const visibleSections = sections.map((section) => ({ section, rect: section.getBoundingClientRect() })).filter(({ rect }) => rect.bottom > 132 && rect.top < window.innerHeight)
+      const currentSection = visibleSections.filter(({ rect }) => rect.top < 132).sort((first, second) => second.rect.top - first.rect.top)[0]
+      const selectedSection = currentSection || visibleSections.sort((first, second) => first.rect.top - second.rect.top)[0]
+      if (selectedSection) setActiveModule(selectedSection.section.id)
+    }
+    const observer = new IntersectionObserver(updateActiveSection, { rootMargin: '-132px 0px -20% 0px', threshold: [0.05, 0.35, 0.7] })
+    const handleScroll = () => updateActiveSection()
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    sections.forEach((section) => observer.observe(section))
+    updateActiveSection()
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      observer.disconnect()
+    }
+  }, [])
+
   return (
     <main className="app-shell">
-      <header className="topbar"><div className="brand-lockup"><div className="brand-mark"><Icon>✦</Icon></div><div><strong>GeoGuardian <em>AI</em></strong><span>Emergency Rescue Command Center</span></div></div><div className="topbar-meta"><span className="live-clock">● LIVE · 14:32:08 UTC</span><div className="system-status"><span className="pulse-dot" /><span><small>SYSTEM STATUS</small>Operational</span></div><button className="profile-button" type="button" aria-label="Open user profile">AC<span>▾</span></button></div></header>
-      <div className="dashboard-content">
-          <NearestHospital latitude={nearestHospitalLatitude} longitude={nearestHospitalLongitude} onLatitudeChange={setNearestHospitalLatitude} onLongitudeChange={setNearestHospitalLongitude} onFind={findNearestHospital} loading={nearestHospitalLoading} error={nearestHospitalError} result={nearestHospitalResult} />
-          <RecommendedResources latitude={recommendationLatitude} longitude={recommendationLongitude} resourceType={recommendationType} onLatitudeChange={setRecommendationLatitude} onLongitudeChange={setRecommendationLongitude} onResourceTypeChange={setRecommendationType} onRecommend={recommendResources} loading={recommendationLoading} error={recommendationError} resources={recommendedResources} />
-          <RescueRoutePlanning {...routePlanningForm} onChange={(field, value) => setRoutePlanningForm((currentForm) => ({ ...currentForm, [field]: value }))} onPlan={planRescueRoute} loading={routePlanningLoading} error={routePlanningError} result={routePlanningResult} />
-          <AvailableRescueTeams teams={teams} loading={teamsLoading} error={teamsError} onRefresh={fetchAvailableTeams} />
-          <TeamDeploymentPanel teams={teams} missions={missions} hospitals={hospitals} vehicles={vehicles} selectedTeamId={deploymentTeamId} onTeamChange={(teamId) => { setDeploymentTeamId(teamId); setDeploymentError(''); setDeploymentSuccess('') }} form={deploymentForm} onFormChange={(field, value) => setDeploymentForm((currentForm) => ({ ...currentForm, [field]: value }))} onDeploy={deployTeam} loading={deployLoading} error={deploymentError} success={deploymentSuccess} result={deploymentResult} />
-          <EmergencyVehicleTracking vehicles={vehicles} loading={vehiclesLoading} error={vehiclesError} selectedVehicleId={selectedVehicleId} onVehicleChange={selectVehicle} latitude={vehicleLatitude} longitude={vehicleLongitude} onLatitudeChange={setVehicleLatitude} onLongitudeChange={setVehicleLongitude} status={vehicleStatus} onStatusChange={setVehicleStatus} onRefresh={fetchVehicles} onUpdateLocation={() => updateVehicle('location')} onUpdateStatus={() => updateVehicle('status')} updateLoading={vehicleUpdateLoading} success={vehicleUpdateSuccess} updateError={vehicleUpdateError} />
-          <EmergencyShelterManagement shelters={shelters} loading={sheltersLoading} error={sheltersError} selectedShelterId={selectedShelterId} onShelterChange={selectShelter} capacity={shelterCapacity} onCapacityChange={setShelterCapacity} nearestLatitude={shelterNearestLatitude} nearestLongitude={shelterNearestLongitude} onNearestLatitudeChange={setShelterNearestLatitude} onNearestLongitudeChange={setShelterNearestLongitude} nearestShelter={nearestShelter} nearestLoading={nearestShelterLoading} nearestError={nearestShelterError} onFindNearest={findNearestShelter} onRefresh={fetchShelters} onUpdateCapacity={updateShelterCapacity} updateLoading={shelterUpdateLoading} success={shelterUpdateSuccess} updateError={shelterUpdateError} />
-          <ResourceAllocationDashboard missions={missions} selectedMissionId={selectedAllocationMissionId} onMissionChange={(missionId) => { setSelectedAllocationMissionId(missionId); setMissionAllocationError(''); setMissionAllocationResult(null); setAllocationReleaseError(''); setAllocationCancellationError('') }} allocations={missionAllocations} loading={missionAllocationsLoading} error={missionAllocationsError} onRefresh={() => fetchMissionAllocations(selectedAllocationMissionId)} onRelease={releaseResourceAllocation} onCancel={cancelResourceAllocation} releasingId={releasingAllocationId} cancellingId={cancellingAllocationId} releaseError={allocationReleaseError} cancellationError={allocationCancellationError} />
-        <section className="welcome-row"><div><span className="eyebrow">COMMAND OVERVIEW / 06 SEP 2026</span><h1>Good afternoon, Commander.</h1><p>Real-time operational overview for the metropolitan response network.</p></div><div className="weather"><span className="weather-icon">☼</span><div><strong>28°C</strong><span>Clear skies · Visibility 12 km</span></div></div></section>
-        <section className="metrics-grid" aria-label="Operational summary"><MetricCard label="Active Missions" value="12" detail="3 critical priority" icon="⌁" tone="red" /><MetricCard label="Rescue Teams" value="08" detail="of 14 total teams" icon="♙" tone="teal" /><MetricCard label="Available Vehicles" value="23" detail="4 currently deployed" icon="▣" tone="blue" /><MetricCard label="Emergency Resources" value="94%" detail="Readiness level" icon="◈" tone="amber" /></section>
+      <header className="topbar"><div className="brand-lockup"><div className="brand-mark"><Icon>✦</Icon></div><div><strong>GeoGuardian <em>AI</em></strong><span>Emergency Rescue Command Center</span></div></div><div className="topbar-meta"><div className="command-time"><span className="live-clock"><i className="pulse-dot" /> LIVE</span><strong>{currentClock}</strong><small>{currentDate}</small></div><div className="system-status"><span className="pulse-dot" /><span><small>SYSTEM STATUS</small>Operational</span></div><button className="profile-button" type="button" aria-label="Open user profile">AC<span>▾</span></button></div></header>
+      <div className="workspace-shell">
+        <div className="dashboard-content">
+        <section className="welcome-row"><div><span className="eyebrow">COMMAND CENTER / OVERVIEW</span><h1>{greeting}, Commander.</h1><p>Real-time operational overview for the metropolitan response network.</p></div><div className="weather"><span className="weather-icon">☼</span><div><strong>28°C</strong><span>Clear skies · Visibility 12 km</span></div></div></section>
+        <nav className="module-nav" aria-label="Command center sections">{navigationItems.map((item) => <button key={item.id} type="button" className={activeModule === item.id ? 'active' : ''} aria-current={activeModule === item.id ? 'location' : undefined} onClick={() => navigateTo(item.id)}><Icon>{item.icon}</Icon><span>{item.label}</span></button>)}</nav>
+        <section id="dashboard" className="page-section dashboard-section"><section className="metrics-grid" aria-label="Operational summary"><MetricCard label="Active Missions" value="12" detail="3 critical priority" icon="⌁" tone="red" /><MetricCard label="Rescue Teams" value="08" detail="of 14 total teams" icon="♙" tone="teal" /><MetricCard label="Available Vehicles" value="23" detail="4 currently deployed" icon="▣" tone="blue" /><MetricCard label="Emergency Resources" value="94%" detail="Readiness level" icon="◈" tone="amber" /></section>
         <div className="command-grid"><section className="panel missions-panel"><PanelHeader eyebrow="LIVE OPERATIONS" title="Active Missions" action="View all missions" /><div className="mission-list">{missionsLoading && <span className="muted">Loading active missions...</span>}{missionsError && <span className="muted">{missionsError}</span>}{!missionsLoading && !missionsError && missions.length === 0 && <span className="muted">No active missions.</span>}{!missionsLoading && !missionsError && missions.map((mission) => { const priority = mission.priority || 'MEDIUM'; const tone = priority.toLowerCase(); const actions = missionStatusActions[mission.status] || []; const isUpdating = missionUpdatingId === mission.mission_id; return <article className="mission-row" key={mission.mission_id}><div className={`priority-line ${tone}`} /><div className="mission-main"><div className="row-heading"><strong>{mission.disaster_id}</strong><span className={`badge ${tone}`}>{priority}</span></div><span className="muted">{mission.mission_id} · {mission.status}</span></div><div className="mission-eta"><small>STATUS</small><strong>{mission.status}</strong></div>{isUpdating ? <span className="muted">Updating...</span> : actions.map((action) => <button className="text-button" type="button" onClick={() => updateMissionStatus(mission.mission_id, action.status)} disabled={missionUpdatingId !== ''} key={action.status}>{action.label}</button>)}<button className="row-arrow" type="button" aria-label={`Open ${mission.mission_id}`}>↗</button></article> })}</div></section><section className="panel map-panel"><PanelHeader eyebrow="GEOSPATIAL VIEW" title="Emergency Response Map" /><div className="map-placeholder"><EmergencyMap hospitals={hospitals} vehicles={vehicles} /></div><div className="map-footer"><span><i className="legend-dot critical" /> Active incidents</span><span><i className="legend-dot hospital" /> Hospitals</span><span><i className="legend-dot team" /> Rescue teams</span><span><i className="legend-dot vehicle" /> Emergency vehicles</span></div></section></div>
         <div className="lower-grid"><section className="panel"><PanelHeader eyebrow="MEDICAL NETWORK" title="Nearby Hospitals" action="View network" /><div className="compact-list">{hospitalsLoading && <span className="muted">Loading nearby hospitals...</span>}{hospitalsError && <span className="muted">{hospitalsError}</span>}{!hospitalsLoading && !hospitalsError && hospitals.map((hospital) => <article className="compact-row" key={hospital.hospital_id}><div className={`facility-icon ${hospital.emergency_available ? 'green' : 'amber'}`}><Icon>✚</Icon></div><div className="compact-main"><strong>{hospital.name}</strong><span>{hospital.emergency_available ? 'Emergency Available' : 'Emergency Unavailable'} · {hospital.available_beds} beds available</span></div><span className="distance">Nearest<br /><small>away</small></span></article>)}</div></section><section className="panel"><PanelHeader eyebrow="FIELD PERSONNEL" title="Rescue Teams" action="Manage teams" /><div className="compact-list">{teamsLoading && <span className="muted">Loading rescue teams...</span>}{teamsError && <span className="muted">{teamsError}</span>}{!teamsLoading && !teamsError && teams.map((team) => <article className="compact-row" key={team.team_id}><div className={`avatar ${team.availability === 'AVAILABLE' ? 'teal' : 'orange'}`}>{(team.name || 'Team').split(' ').map((part) => part[0]).join('').slice(0, 2)}</div><div className="compact-main"><strong>{team.name}</strong><span>{(team.specialization || ['General Response']).join(' · ')} · {team.members} members</span></div><span className={`availability ${team.availability === 'AVAILABLE' ? 'available' : 'standby'}`}><i />{team.availability}</span></article>)}</div></section><section className="panel"><PanelHeader eyebrow="SUPPLY INVENTORY" title="Emergency Resources" action="View inventory" /><div className="inventory-allocation-controls"><label htmlFor="inventory-resource">Resource<select id="inventory-resource" value={selectedResourceId} onChange={(event) => { setSelectedResourceId(event.target.value); setInventoryAllocationError(''); setInventoryAllocationResult(null); setMissionAllocationError(''); setMissionAllocationResult(null) }}><option value="">Select a resource</option>{resources.map((resource) => <option value={resource.resource_id} key={resource.resource_id}>{resource.name} ({resource.available_quantity} available)</option>)}</select></label><label htmlFor="allocation-mission">Mission<select id="allocation-mission" value={selectedAllocationMissionId} onChange={(event) => { setSelectedAllocationMissionId(event.target.value); setMissionAllocationError(''); setMissionAllocationResult(null) }}><option value="">Select a mission</option>{missions.map((mission) => <option value={mission.mission_id} key={mission.mission_id}>{mission.mission_id} — {mission.disaster_id} — {mission.status}</option>)}</select></label><label htmlFor="inventory-quantity">Quantity<input id="inventory-quantity" type="number" min="1" max={selectedResource?.available_quantity} value={allocationQuantity} onChange={(event) => { setAllocationQuantity(event.target.value); setInventoryAllocationError(''); setInventoryAllocationResult(null); setMissionAllocationError(''); setMissionAllocationResult(null) }} /></label><button className="inventory-allocation-button" type="button" onClick={allocateResourceInventory} disabled={inventoryAllocationDisabled}>{inventoryAllocationLoading ? 'Allocating...' : 'Allocate inventory'}</button><button className="inventory-allocation-button" type="button" onClick={allocateResourceToMission} disabled={missionAllocationDisabled}>{missionAllocationLoading ? 'Allocating...' : 'Allocate to Mission'}</button></div>{inventoryAllocationError && <span className="inventory-feedback inventory-feedback-error">{inventoryAllocationError}</span>}{inventoryAllocationResult && <span className="inventory-feedback inventory-feedback-success">Allocated {inventoryAllocationResult.quantity} {inventoryAllocationResult.resourceName}.</span>}{missionAllocationError && <span className="inventory-feedback inventory-feedback-error">{missionAllocationError}</span>}{missionAllocationResult && <span className="inventory-feedback inventory-feedback-success">Allocated {missionAllocationResult.quantity} {selectedResource?.name || missionAllocationResult.resource_id} to {missionAllocationResult.mission_id}.</span>}<div className="resource-list">{resourcesLoading && <span className="muted">Loading emergency resources...</span>}{resourcesError && <span className="muted">{resourcesError}</span>}{!resourcesLoading && !resourcesError && resources.map((resource) => { const resourceType = (resource.resource_type || '').toUpperCase(); const tone = resourceType.includes('MEDICAL') ? 'red' : resourceType.includes('BLANKET') ? 'cyan' : 'blue'; const icon = resourceType.includes('MEDICAL') ? '✚' : resourceType.includes('WATER') ? '◒' : '▱'; return <article className="resource-row" key={resource.resource_id}><div className={`resource-icon ${tone}`}><Icon>{icon}</Icon></div><div><strong>{resource.name}</strong><span>{resource.resource_type}</span></div><b>{resource.available_quantity}</b></article>})}</div></section><section className="panel"><PanelHeader eyebrow="VEHICLE TRACKING" title="Emergency Vehicles" action="View fleet" /><div className="compact-list">{vehiclesLoading && <span className="muted">Loading emergency vehicles...</span>}{vehiclesError && <span className="muted">{vehiclesError}</span>}{!vehiclesLoading && !vehiclesError && vehicles.map((vehicle) => <article className="compact-row" key={vehicle.vehicle_id}><div className={`facility-icon ${vehicle.status === 'AVAILABLE' ? 'green' : 'amber'}`}><Icon>▣</Icon></div><div className="compact-main"><strong>{vehicle.registration_number}</strong><span>{vehicle.vehicle_type} · {vehicle.status} · Capacity: {vehicle.capacity} · Mission: {vehicle.assigned_mission_id || 'Unassigned'}</span></div><span className={`availability ${vehicle.status === 'AVAILABLE' ? 'available' : 'standby'}`}><i />{vehicle.status}</span></article>)}</div></section></div>
         <section className="quick-actions"><div><span className="eyebrow">COMMAND CONSOLE</span><h2>Quick Actions</h2><p className="notice"><span className="pulse-dot" />{notice}</p></div><div className="action-buttons">{['Allocate Resource', 'Deploy Team', 'Find Nearest Hospital', 'Find Nearest Vehicle', 'Optimize Route', 'Calculate Risk Priority'].map((action, index) => <button type="button" className={`action-button action-${index}`} onClick={() => action === 'Allocate Resource' ? allocateResource() : action === 'Deploy Team' ? deployTeam() : action === 'Find Nearest Hospital' ? findNearestHospital() : action === 'Find Nearest Vehicle' ? findNearestVehicle() : action === 'Optimize Route' ? optimizeRoute() : action === 'Calculate Risk Priority' ? calculateRiskPriority() : handleAction(action)} disabled={(action === 'Deploy Team' && deployLoading) || (action === 'Find Nearest Hospital' && nearestHospitalLoading) || (action === 'Find Nearest Vehicle' && nearestVehicleLoading) || (action === 'Calculate Risk Priority' && riskLoading)} key={action}><span>{['＋', '↗', '✚', '▣', '⌁', '⚠'][index]}</span>{action}<b>→</b></button>)}</div>{nearestHospitalLoading && <span className="muted">Finding nearest hospital...</span>}{nearestHospitalError && <span className="muted">{nearestHospitalError}</span>}{nearestHospitalResult && !nearestHospitalLoading && !nearestHospitalError && <div><strong>Nearest Hospital Result</strong><div><span>Hospital: {nearestHospitalResult.name}</span><span>Available beds: {nearestHospitalResult.available_beds}</span><span>Available ICU: {nearestHospitalResult.available_icu}</span><span>Emergency availability: {nearestHospitalResult.emergency_available ? 'Available' : 'Unavailable'}</span></div></div>}{nearestVehicleLoading && <span className="muted">Finding nearest vehicle...</span>}{nearestVehicleError && <span className="muted">{nearestVehicleError}</span>}{nearestVehicleResult && !nearestVehicleLoading && !nearestVehicleError && <div><strong>Nearest Vehicle Result</strong><div><span>Registration number: {nearestVehicleResult.registration_number}</span><span>Vehicle type: {nearestVehicleResult.vehicle_type}</span><span>Status: {nearestVehicleResult.status}</span><span>Capacity: {nearestVehicleResult.capacity}</span><span>Assigned mission: {nearestVehicleResult.assigned_mission_id || "Unassigned"}</span></div></div>}{allocationLoading && <span className="muted">Allocating resources...</span>}{allocationError && <span className="muted">{allocationError}</span>}{allocationResult && !allocationLoading && !allocationError && <div><strong>Allocation Result</strong><div><span>Hospital: {allocationResult.recommended_hospital.name}</span><span>Rescue Team: {allocationResult.recommended_rescue_team.name}</span><span>Priority Score: {allocationResult.priority_score}</span><span>Estimated Distance: {allocationResult.estimated_distance_km} km</span></div><p>{allocationResult.reasoning}</p></div>}{routeLoading && <span className="muted">Optimizing route...</span>}{routeError && <span className="muted">{routeError}</span>}{routeResult && !routeLoading && !routeError && <div><strong>Route Result</strong><div><span>{routeResult.distance_km} km</span><span>{routeResult.estimated_duration_minutes} min</span><span>{Number(routeResult.route_risk_score).toFixed(2)}</span><span>{routeResult.route_status}</span></div><p>{routeResult.explanation}</p></div>}{riskLoading && <span className="muted">Calculating risk priority...</span>}{riskError && <span className="muted">{riskError}</span>}{riskResult && !riskLoading && !riskError && <div><strong>Risk Priority Result</strong><div><span>{riskResult.risk_score}</span><span>{riskResult.priority_level}</span></div><p>{riskResult.reasoning}</p></div>}</section>
-      </div><footer><span>GEOGUARDIAN AI <b>•</b> RESCUE MANAGEMENT MODULE</span><span>Last data sync: 14:31:54 UTC <i className="pulse-dot" /></span></footer>
+        </section>
+        <section id="hospital" className="page-section"><ModuleHeader moduleId="hospital" /><NearestHospital latitude={nearestHospitalLatitude} longitude={nearestHospitalLongitude} onLatitudeChange={setNearestHospitalLatitude} onLongitudeChange={setNearestHospitalLongitude} onFind={findNearestHospital} loading={nearestHospitalLoading} error={nearestHospitalError} result={nearestHospitalResult} /></section>
+        <section id="resources" className="page-section"><ModuleHeader moduleId="resources" /><RecommendedResources latitude={recommendationLatitude} longitude={recommendationLongitude} resourceType={recommendationType} onLatitudeChange={setRecommendationLatitude} onLongitudeChange={setRecommendationLongitude} onResourceTypeChange={setRecommendationType} onRecommend={recommendResources} loading={recommendationLoading} error={recommendationError} resources={recommendedResources} /></section>
+        <section id="route" className="page-section"><ModuleHeader moduleId="route" /><RescueRoutePlanning {...routePlanningForm} onChange={(field, value) => setRoutePlanningForm((currentForm) => ({ ...currentForm, [field]: value }))} onPlan={planRescueRoute} loading={routePlanningLoading} error={routePlanningError} result={routePlanningResult} /></section>
+        <section id="teams" className="page-section"><ModuleHeader moduleId="teams" /><AvailableRescueTeams teams={teams} loading={teamsLoading} error={teamsError} onRefresh={fetchAvailableTeams} /></section>
+        <section id="deployment" className="page-section"><ModuleHeader moduleId="deployment" /><div className="mission-workspace"><TeamDeploymentPanel teams={teams} missions={missions} hospitals={hospitals} vehicles={vehicles} selectedTeamId={deploymentTeamId} onTeamChange={(teamId) => { setDeploymentTeamId(teamId); setDeploymentError(''); setDeploymentSuccess('') }} form={deploymentForm} onFormChange={(field, value) => setDeploymentForm((currentForm) => ({ ...currentForm, [field]: value }))} onDeploy={deployTeam} loading={deployLoading} error={deploymentError} success={deploymentSuccess} result={deploymentResult} /><MissionOperationsDetails mission={deploymentResult || missions.find((mission) => mission.mission_id === selectedAllocationMissionId)} selectedTeam={teams.find((team) => team.team_id === (deploymentResult?.team_id || missions.find((mission) => mission.mission_id === selectedAllocationMissionId)?.team_id))} hospitals={hospitals} vehicles={vehicles} routeResult={routePlanningResult || routeResult} allocations={missionAllocations} missionAllocationsLoading={missionAllocationsLoading} missionAllocationsError={missionAllocationsError} onStatusChange={updateMissionStatus} missionUpdatingId={missionUpdatingId} onRelease={releaseResourceAllocation} onCancel={cancelResourceAllocation} releasingId={releasingAllocationId} cancellingId={cancellingAllocationId} /></div></section>
+        <section id="vehicles" className="page-section"><ModuleHeader moduleId="vehicles" /><EmergencyVehicleTracking vehicles={vehicles} loading={vehiclesLoading} error={vehiclesError} selectedVehicleId={selectedVehicleId} onVehicleChange={selectVehicle} latitude={vehicleLatitude} longitude={vehicleLongitude} onLatitudeChange={setVehicleLatitude} onLongitudeChange={setVehicleLongitude} status={vehicleStatus} onStatusChange={setVehicleStatus} onRefresh={fetchVehicles} onUpdateLocation={() => updateVehicle('location')} onUpdateStatus={() => updateVehicle('status')} updateLoading={vehicleUpdateLoading} success={vehicleUpdateSuccess} updateError={vehicleUpdateError} /></section>
+        <section id="shelters" className="page-section"><ModuleHeader moduleId="shelters" /><EmergencyShelterManagement shelters={shelters} loading={sheltersLoading} error={sheltersError} selectedShelterId={selectedShelterId} onShelterChange={selectShelter} capacity={shelterCapacity} onCapacityChange={setShelterCapacity} nearestLatitude={shelterNearestLatitude} nearestLongitude={shelterNearestLongitude} onNearestLatitudeChange={setShelterNearestLatitude} onNearestLongitudeChange={setShelterNearestLongitude} nearestShelter={nearestShelter} nearestLoading={nearestShelterLoading} nearestError={nearestShelterError} onFindNearest={findNearestShelter} onRefresh={fetchShelters} onUpdateCapacity={updateShelterCapacity} updateLoading={shelterUpdateLoading} success={shelterUpdateSuccess} updateError={shelterUpdateError} /></section>
+        <section id="allocation" className="page-section"><ModuleHeader moduleId="allocation" /><ResourceAllocationWorkspace resources={resources} missions={missions} selectedResourceId={selectedResourceId} allocationQuantity={allocationQuantity} onResourceChange={(resourceId) => { setSelectedResourceId(resourceId); setInventoryAllocationError(''); setMissionAllocationError('') }} onQuantityChange={setAllocationQuantity} onAllocateInventory={allocateResourceInventory} onAllocateMission={allocateResourceToMission} inventoryAllocationDisabled={inventoryAllocationDisabled} missionAllocationDisabled={missionAllocationDisabled} inventoryLoading={inventoryAllocationLoading} missionLoading={missionAllocationLoading} inventoryError={inventoryAllocationError} missionError={missionAllocationError} inventoryResult={inventoryAllocationResult} missionResult={missionAllocationResult} selectedMissionId={selectedAllocationMissionId} onMissionChange={(missionId) => { setSelectedAllocationMissionId(missionId); setMissionAllocationError(''); setMissionAllocationResult(null); setAllocationReleaseError(''); setAllocationCancellationError('') }}><ResourceAllocationDashboard missions={missions} selectedMissionId={selectedAllocationMissionId} onMissionChange={(missionId) => { setSelectedAllocationMissionId(missionId); setMissionAllocationError(''); setMissionAllocationResult(null); setAllocationReleaseError(''); setAllocationCancellationError('') }} allocations={missionAllocations} loading={missionAllocationsLoading} error={missionAllocationsError} onRefresh={() => fetchMissionAllocations(selectedAllocationMissionId)} onRelease={releaseResourceAllocation} onCancel={cancelResourceAllocation} releasingId={releasingAllocationId} cancellingId={cancellingAllocationId} releaseError={allocationReleaseError} cancellationError={allocationCancellationError} /></ResourceAllocationWorkspace></section>
+      </div><footer><span>GEOGUARDIAN AI <b>•</b> RESCUE MANAGEMENT MODULE</span><span>Local time: {currentClock} <i className="pulse-dot" /></span></footer>
       <section className="panel mission-allocation-history"><PanelHeader eyebrow="RESOURCE AUDIT" title="Mission Allocation History" />{allocationReleaseError && <span className="inventory-feedback inventory-feedback-error">{allocationReleaseError}</span>}{allocationCancellationError && <span className="inventory-feedback inventory-feedback-error">{allocationCancellationError}</span>}{!selectedAllocationMissionId && <span className="muted">Select a mission to view allocation history.</span>}{selectedAllocationMissionId && missionAllocationsLoading && <span className="muted">Loading mission allocations...</span>}{selectedAllocationMissionId && missionAllocationsError && <span className="muted">{missionAllocationsError}</span>}{selectedAllocationMissionId && !missionAllocationsLoading && !missionAllocationsError && missionAllocations.length === 0 && <span className="muted">No resource allocations for this mission.</span>}{selectedAllocationMissionId && !missionAllocationsLoading && !missionAllocationsError && missionAllocations.length > 0 && <div className="compact-list">{missionAllocations.map((allocation) => <article className="compact-row" key={allocation.allocation_id}><div className="compact-main"><strong>{allocation.allocation_id}</strong><span>{allocation.resource_id} · {allocation.quantity} units · {allocation.disaster_id}</span><span>{allocation.status} · {allocation.allocated_at}</span></div>{allocation.status === 'ALLOCATED' && <div className="allocation-actions"><button className="allocation-release-button" type="button" onClick={() => releaseResourceAllocation(allocation.allocation_id)} disabled={releasingAllocationId === allocation.allocation_id || cancellingAllocationId === allocation.allocation_id}>{releasingAllocationId === allocation.allocation_id ? 'Releasing...' : 'Release'}</button><button className="allocation-cancel-button" type="button" onClick={() => cancelResourceAllocation(allocation.allocation_id)} disabled={cancellingAllocationId === allocation.allocation_id || releasingAllocationId === allocation.allocation_id}>{cancellingAllocationId === allocation.allocation_id ? 'Cancelling...' : 'Cancel'}</button></div>}</article>)}</div>}</section>
+      </div>
     </main>
   )
 }
