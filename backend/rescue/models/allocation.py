@@ -9,11 +9,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 from backend.rescue.models.emergency_resource import EmergencyResource, ResourceType
 from backend.rescue.models.hospital import Hospital
+from backend.rescue.models.mission import MissionStatus
 from backend.rescue.models.rescue_team import RescueTeam
 
 
@@ -130,3 +132,122 @@ class AllocationRecommendation(BaseModel):
         if not value or not value.strip():
             raise ValueError("must not be empty")
         return value
+
+
+class MissionResourceRecommendationRequest(BaseModel):
+    """Request a read-only resource recommendation for an existing mission."""
+
+    mission_id: str = Field(..., min_length=1, description="Existing mission identifier")
+    resource_type: ResourceType | None = Field(
+        default=None,
+        description="Optional strict resource-type filter",
+    )
+    quantity: int | None = Field(
+        default=None,
+        gt=0,
+        strict=True,
+        description="Optional minimum available quantity for each recommendation",
+    )
+
+    @field_validator("mission_id")
+    @classmethod
+    def _validate_mission_id(cls, value: str) -> str:
+        """Reject empty or whitespace-only mission identifiers."""
+        if not value or not value.strip():
+            raise ValueError("must not be empty")
+        return value
+
+
+class MissionResourceRecommendation(BaseModel):
+    """Read-only resource recommendations scoped to an existing mission."""
+
+    mission_id: str = Field(..., description="Mission associated with the recommendations")
+    disaster_id: str = Field(..., description="Disaster associated with the mission")
+    destination_latitude: float = Field(..., description="Mission destination latitude")
+    destination_longitude: float = Field(..., description="Mission destination longitude")
+    resource_type: ResourceType | None = Field(
+        ..., description="Strict resource-type filter, if requested"
+    )
+    requested_quantity: int | None = Field(
+        ..., description="Minimum available quantity requested, if provided"
+    )
+    recommended_resources: list[EmergencyResource] = Field(
+        default_factory=list,
+        description="Eligible recommendations only; inventory is not allocated",
+    )
+    recommendation_only: Literal[True] = Field(
+        default=True,
+        description="Always true; recommendations do not reserve or allocate inventory",
+    )
+    ranking_order: str = Field(
+        default=(
+            "strict resource-type filter; available quantity descending; "
+            "geographic distance ascending; resource type ascending; resource ID ascending"
+        ),
+        description="Deterministic ordering applied to eligible resources",
+    )
+
+
+class MissionResourceRequirement(BaseModel):
+    """One explicitly requested resource type and quantity."""
+
+    resource_type: ResourceType = Field(..., description="Required emergency resource type")
+    quantity: int = Field(..., gt=0, strict=True, description="Required quantity (> 0)")
+
+
+class MissionResourceReadinessRequest(BaseModel):
+    """Explicit resource requirements to assess for an existing mission."""
+
+    mission_id: str = Field(..., min_length=1, description="Existing mission identifier")
+    requirements: list[MissionResourceRequirement] = Field(
+        ..., min_length=1, description="Explicit resource requirements to assess"
+    )
+
+    @field_validator("mission_id")
+    @classmethod
+    def _validate_readiness_mission_id(cls, value: str) -> str:
+        """Reject empty or whitespace-only mission identifiers."""
+        if not value or not value.strip():
+            raise ValueError("must not be empty")
+        return value
+
+    @field_validator("requirements")
+    @classmethod
+    def _validate_unique_requirement_types(
+        cls, value: list[MissionResourceRequirement]
+    ) -> list[MissionResourceRequirement]:
+        """Prevent duplicate types from double-counting the same inventory."""
+        types = [item.resource_type for item in value]
+        if len(types) != len(set(types)):
+            raise ValueError("requirements must contain each resource type only once")
+        return value
+
+
+class MissionResourceReadinessItem(BaseModel):
+    """Readiness details for one requested resource type."""
+
+    resource_type: ResourceType
+    requested_quantity: int = Field(..., gt=0)
+    inventory_available_quantity: int = Field(..., ge=0)
+    mission_allocated_quantity: int = Field(
+        ...,
+        ge=0,
+        description="Quantity in active ALLOCATED records for this mission; not inventory",
+    )
+    satisfiable: bool
+    shortage: int = Field(..., ge=0)
+
+
+class MissionResourceReadinessResponse(BaseModel):
+    """Read-only overall readiness assessment for a mission."""
+
+    mission_id: str
+    disaster_id: str
+    mission_status: MissionStatus
+    ready: bool
+    requirements: list[MissionResourceReadinessItem]
+    shortages: list[MissionResourceReadinessItem]
+    assessment_only: Literal[True] = Field(
+        default=True,
+        description="Assessment does not allocate resources or change mission state",
+    )

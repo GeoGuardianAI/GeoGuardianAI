@@ -38,6 +38,7 @@ GeoGuardian AI aims to solve these challenges using Artificial Intelligence.
 - Smart Hospital Recommendation
 - Shelter Recommendation
 - Rescue Team Allocation
+- Mission resource-readiness assessment using available inventory and active mission allocations
 - Route Optimization
 - Neo4j Knowledge Graph
 

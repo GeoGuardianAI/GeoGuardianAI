@@ -4,8 +4,17 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.rescue.main import app
+from backend.rescue.services import risk_priority_service
 
 client = TestClient(app)
+
+@pytest.fixture(autouse=True)
+def restore_cached_risk_results():
+    original_results = risk_priority_service._RISK_PRIORITY_RESULTS.copy()
+    risk_priority_service._RISK_PRIORITY_RESULTS.clear()
+    yield
+    risk_priority_service._RISK_PRIORITY_RESULTS.clear()
+    risk_priority_service._RISK_PRIORITY_RESULTS.update(original_results)
 
 
 def _valid_payload(**overrides: object) -> dict[str, object]:

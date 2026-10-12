@@ -12,6 +12,7 @@ POPULATION_CAP = 10_000
 SEVERITY_WEIGHT = 0.50
 POPULATION_WEIGHT = 0.30
 INFRASTRUCTURE_WEIGHT = 0.20
+_RISK_PRIORITY_RESULTS: dict[str, RiskPriorityResult] = {}
 
 
 def calculate_risk_priority(request: RiskPriorityRequest) -> RiskPriorityResult:
@@ -46,12 +47,27 @@ def calculate_risk_priority(request: RiskPriorityRequest) -> RiskPriorityResult:
         f"which maps to {priority_level.value} priority."
     )
 
-    return RiskPriorityResult(
+    result = RiskPriorityResult(
         disaster_id=request.disaster_id,
         risk_score=risk_score,
         priority_level=priority_level,
         reasoning=reasoning,
     )
+    _RISK_PRIORITY_RESULTS[result.disaster_id] = result
+    return result
+
+
+def get_risk_priority_scores(disaster_ids: set[str]) -> dict[str, float]:
+    """Return calculated scores only for requested disaster IDs.
+
+    Results come exclusively from successful calls to ``calculate_risk_priority``.
+    The in-memory cache avoids recalculating scores during mission ranking.
+    """
+    return {
+        disaster_id: _RISK_PRIORITY_RESULTS[disaster_id].risk_score
+        for disaster_id in disaster_ids
+        if disaster_id in _RISK_PRIORITY_RESULTS
+    }
 
 
 def _priority_level_for_score(score: float) -> PriorityLevel:

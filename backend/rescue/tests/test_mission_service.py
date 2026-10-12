@@ -354,6 +354,80 @@ def test_assigned_to_cancelled_is_allowed() -> None:
     assert updated.status == MissionStatus.CANCELLED
 
 
+@pytest.mark.parametrize(
+    ("current_status", "next_status"),
+    [
+        (MissionStatus.ASSIGNED, MissionStatus.DEPLOYED),
+        (MissionStatus.DEPLOYED, MissionStatus.EN_ROUTE),
+        (MissionStatus.EN_ROUTE, MissionStatus.ARRIVED),
+        (MissionStatus.ARRIVED, MissionStatus.COMPLETED),
+        (MissionStatus.ASSIGNED, MissionStatus.CANCELLED),
+        (MissionStatus.DEPLOYED, MissionStatus.CANCELLED),
+        (MissionStatus.EN_ROUTE, MissionStatus.CANCELLED),
+        (MissionStatus.ARRIVED, MissionStatus.CANCELLED),
+    ],
+)
+def test_all_supported_transitions_are_allowed(
+    current_status: MissionStatus,
+    next_status: MissionStatus,
+) -> None:
+    mission = mission_service.create_mission(
+        team_id="rescue-ny-01",
+        disaster_id="disaster-01",
+        destination_latitude=40.7128,
+        destination_longitude=-74.0060,
+    )
+    prior_statuses = {
+        MissionStatus.ASSIGNED: (),
+        MissionStatus.DEPLOYED: (MissionStatus.DEPLOYED,),
+        MissionStatus.EN_ROUTE: (MissionStatus.DEPLOYED, MissionStatus.EN_ROUTE),
+        MissionStatus.ARRIVED: (
+            MissionStatus.DEPLOYED,
+            MissionStatus.EN_ROUTE,
+            MissionStatus.ARRIVED,
+        ),
+    }
+    for status in prior_statuses[current_status]:
+        mission_service.update_mission_status(mission.mission_id, status)
+
+    updated = mission_service.update_mission_status(mission.mission_id, next_status)
+
+    assert updated.status == next_status
+
+
+@pytest.mark.parametrize(
+    ("terminal_status", "attempted_status"),
+    [
+        (terminal, attempted)
+        for terminal in (MissionStatus.COMPLETED, MissionStatus.CANCELLED)
+        for attempted in MissionStatus
+    ],
+)
+def test_terminal_missions_reject_all_status_changes(
+    terminal_status: MissionStatus,
+    attempted_status: MissionStatus,
+) -> None:
+    mission = mission_service.create_mission(
+        team_id="rescue-ny-01",
+        disaster_id="disaster-01",
+        destination_latitude=40.7128,
+        destination_longitude=-74.0060,
+    )
+    if terminal_status == MissionStatus.COMPLETED:
+        for status in (
+            MissionStatus.DEPLOYED,
+            MissionStatus.EN_ROUTE,
+            MissionStatus.ARRIVED,
+        ):
+            mission_service.update_mission_status(mission.mission_id, status)
+    mission_service.update_mission_status(mission.mission_id, terminal_status)
+
+    with pytest.raises(ValueError, match="Invalid mission status transition"):
+        mission_service.update_mission_status(mission.mission_id, attempted_status)
+
+    assert mission_service.get_mission(mission.mission_id).status == terminal_status
+
+
 def test_invalid_status_transitions_raise_value_error() -> None:
     mission = mission_service.create_mission(
         team_id="rescue-ny-01",

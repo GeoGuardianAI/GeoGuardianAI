@@ -1,12 +1,15 @@
 """Emergency resource inventory service for the Resource & Rescue module.
 
-Provides deterministic in-memory inventory data and read-only lookup helpers
-for available emergency resources.
+Provides deterministic seeded inventory, SQLite-backed inventory changes, and
+read-only lookup helpers for available emergency resources.
 """
 
 from __future__ import annotations
 
 from backend.rescue.models.emergency_resource import EmergencyResource, ResourceType
+from backend.rescue.models.audit_event import AuditEventType
+from backend.rescue.persistence import load_or_seed, load_records, persist_state, transaction
+from backend.rescue.services.audit_service import create_audit_event
 from backend.rescue.utils.geo import haversine_km
 
 
@@ -68,6 +71,7 @@ _RESOURCES: list[EmergencyResource] = [
         longitude=-122.3321,
     ),
 ]
+_RESOURCES = load_or_seed("resources", _RESOURCES, EmergencyResource)
 
 
 def get_available_resources(
@@ -106,6 +110,42 @@ def get_nearby_resources(
     )
 
 
+def get_recommended_resources(
+    latitude: float,
+    longitude: float,
+    resource_type: ResourceType | None = None,
+    minimum_quantity: int | None = None,
+) -> list[EmergencyResource]:
+    """Return read-only resource recommendations in deterministic rank order.
+
+    A requested type is a strict eligibility filter. Remaining resources rank
+    by available quantity descending, geographic distance ascending, resource
+    type ascending, and resource identifier ascending.
+    """
+    if minimum_quantity is not None and (
+        not isinstance(minimum_quantity, int)
+        or isinstance(minimum_quantity, bool)
+        or minimum_quantity <= 0
+    ):
+        raise ValueError("minimum_quantity must be a positive integer")
+
+    nearby_resources = get_nearby_resources(latitude, longitude, resource_type)
+    eligible_resources = [
+        resource
+        for resource in nearby_resources
+        if minimum_quantity is None or resource.available_quantity >= minimum_quantity
+    ]
+    return sorted(
+        eligible_resources,
+        key=lambda resource: (
+            -resource.available_quantity,
+            haversine_km(latitude, longitude, resource.latitude, resource.longitude),
+            resource.resource_type.value,
+            resource.resource_id,
+        ),
+    )
+
+
 def check_available_quantity(resource_id: str, requested_quantity: int) -> bool:
     """Return whether a resource has at least the requested quantity.
 
@@ -130,7 +170,12 @@ def check_available_quantity(resource_id: str, requested_quantity: int) -> bool:
     return resource.available_quantity >= requested_quantity
 
 
-def allocate_resource(resource_id: str, quantity: int) -> EmergencyResource:
+def allocate_resource(
+    resource_id: str,
+    quantity: int,
+    *,
+    persist: bool = True,
+) -> EmergencyResource:
     """Decrease and return the requested resource inventory quantity."""
     if (
         not isinstance(quantity, int)
@@ -139,18 +184,59 @@ def allocate_resource(resource_id: str, quantity: int) -> EmergencyResource:
     ):
         raise ValueError("requested_quantity must be a positive integer")
 
-    resource = next(
-        (item for item in _RESOURCES if item.resource_id == resource_id),
-        None,
-    )
-    if resource is None:
-        raise ValueError("no suitable resource available")
+    if not persist:
+        resource = next(
+            (item for item in _RESOURCES if item.resource_id == resource_id),
+            None,
+        )
+        if resource is None:
+            raise ValueError("no suitable resource available")
+        if quantity > resource.available_quantity:
+            raise ValueError("requested quantity exceeds available quantity")
+        resource.available_quantity -= quantity
+        return resource
 
-    if quantity > resource.available_quantity:
-        raise ValueError("requested quantity exceeds available quantity")
+    with transaction() as connection:
+        resources = load_records(connection, "resources", EmergencyResource)
+        resource = next(
+            (item for item in resources if item.resource_id == resource_id),
+            None,
+        )
+        if resource is None:
+            raise ValueError("no suitable resource available")
+        if quantity > resource.available_quantity:
+            raise ValueError("requested quantity exceeds available quantity")
+        resource.available_quantity -= quantity
+        persist_state(
+            {"resources": resources},
+            audit_events=[
+                create_audit_event(
+                    AuditEventType.INVENTORY_ALLOCATED,
+                    resource_id=resource_id,
+                    summary={
+                        "quantity": quantity,
+                        "available_quantity_after": resource.available_quantity,
+                    },
+                )
+            ],
+        )
+    _replace_resource_cache(resources)
+    return next(item for item in _RESOURCES if item.resource_id == resource_id)
 
-    resource.available_quantity -= quantity
-    return resource
+
+def _replace_resource_cache(resources: list[EmergencyResource]) -> None:
+    """Refresh existing resource instances while preserving references held by services."""
+    by_id = {resource.resource_id: resource for resource in _RESOURCES}
+    refreshed = []
+    for resource in resources:
+        cached = by_id.get(resource.resource_id)
+        if cached is None:
+            refreshed.append(resource)
+            continue
+        for field_name, value in resource:
+            setattr(cached, field_name, value)
+        refreshed.append(cached)
+    _RESOURCES[:] = refreshed
 
 
 def _validate_coordinates(latitude: float, longitude: float) -> None:

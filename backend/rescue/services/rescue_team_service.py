@@ -1,14 +1,14 @@
 """Service for rescue-team lookup in the Resource & Rescue Management module.
 
-This module provides a deterministic in-memory collection of mock rescue teams
-and helper logic to search for teams based on coordinates and specialization.
-It intentionally keeps business logic in the service layer and avoids any API,
-DB, or routing concerns.
+This module provides a deterministic seeded collection of rescue teams and
+helper logic to search for teams based on coordinates and specialization.
+Operational team changes are persisted by the mission service.
 """
 
 from __future__ import annotations
 
 from backend.rescue.models.rescue_team import Availability, RescueTeam, TeamType
+from backend.rescue.persistence import load_or_seed
 from backend.rescue.utils.geo import haversine_km
 
 
@@ -93,6 +93,7 @@ _RESCUE_TEAMS: list[RescueTeam] = [
         current_mission_id="mission-4402",
     ),
 ]
+_RESCUE_TEAMS = load_or_seed("rescue_teams", _RESCUE_TEAMS, RescueTeam)
 
 
 def get_available_teams(

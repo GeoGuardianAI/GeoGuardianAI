@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.rescue.api.deployment import router as deployment_router
+from backend.rescue.api.audit_events import router as audit_events_router
+from backend.rescue.api.detection_integration import router as detection_integration_router
 from backend.rescue.api.emergency_resources import router as emergency_resources_router
 from backend.rescue.api.emergency_vehicles import router as emergency_vehicles_router
 from backend.rescue.api.hospitals import router as hospitals_router
@@ -27,6 +29,8 @@ app.add_middleware(
 
 app.include_router(hospitals_router)
 app.include_router(missions_router)
+app.include_router(audit_events_router)
+app.include_router(detection_integration_router)
 app.include_router(emergency_vehicles_router)
 app.include_router(emergency_resources_router)
 app.include_router(deployment_router)

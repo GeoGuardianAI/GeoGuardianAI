@@ -7,6 +7,7 @@ to find the nearest shelter with emergency availability and open capacity.
 from __future__ import annotations
 
 from backend.rescue.models.shelter import EmergencyShelter, Shelter, ShelterStatus
+from backend.rescue.persistence import load_or_seed, persist_state
 from backend.rescue.utils.geo import haversine_km
 
 
@@ -59,6 +60,7 @@ _SHELTERS: list[Shelter] = [
         emergency_available=True,
     ),
 ]
+_SHELTERS = load_or_seed("shelters", _SHELTERS, Shelter)
 
 _EMERGENCY_SHELTERS: list[EmergencyShelter] = [
     EmergencyShelter(
@@ -98,6 +100,9 @@ _EMERGENCY_SHELTERS: list[EmergencyShelter] = [
         status=ShelterStatus.CLOSED,
     ),
 ]
+_EMERGENCY_SHELTERS = load_or_seed(
+    "emergency_shelters", _EMERGENCY_SHELTERS, EmergencyShelter
+)
 
 
 def get_shelters() -> list[EmergencyShelter]:
@@ -128,7 +133,13 @@ def update_available_capacity(shelter_id: str, available_capacity: int) -> Emerg
     shelter = get_emergency_shelter(shelter_id)
     if available_capacity < 0 or available_capacity > shelter.capacity:
         raise ValueError("available_capacity must be between 0 and capacity")
+    original_capacity = shelter.available_capacity
     shelter.available_capacity = available_capacity
+    try:
+        persist_state({"emergency_shelters": _EMERGENCY_SHELTERS})
+    except Exception:
+        shelter.available_capacity = original_capacity
+        raise
     return shelter
 
 

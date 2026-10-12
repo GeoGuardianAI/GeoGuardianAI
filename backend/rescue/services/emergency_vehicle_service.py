@@ -11,6 +11,9 @@ from backend.rescue.models.emergency_vehicle import (
     VehicleStatus,
     VehicleType,
 )
+from backend.rescue.models.audit_event import AuditEventType
+from backend.rescue.persistence import load_or_seed, load_records, persist_state, transaction
+from backend.rescue.services.audit_service import create_audit_event
 from backend.rescue.utils.geo import haversine_km
 
 
@@ -80,6 +83,7 @@ _VEHICLES: list[EmergencyVehicle] = [
         capacity=10,
     ),
 ]
+_VEHICLES = load_or_seed("vehicles", _VEHICLES, EmergencyVehicle)
 
 
 def get_available_vehicles(
@@ -117,10 +121,31 @@ def update_vehicle_location(
     longitude: float,
 ) -> EmergencyVehicle:
     """Update a vehicle's validated geographic location."""
-    vehicle = get_vehicle(vehicle_id)
-    vehicle.latitude = latitude
-    vehicle.longitude = longitude
-    return vehicle
+    with transaction() as connection:
+        vehicles = load_records(connection, "vehicles", EmergencyVehicle)
+        vehicle = next((item for item in vehicles if item.vehicle_id == vehicle_id), None)
+        if vehicle is None:
+            raise ValueError(f"Emergency vehicle '{vehicle_id}' does not exist")
+        original_location = (vehicle.latitude, vehicle.longitude)
+        vehicle.latitude = latitude
+        vehicle.longitude = longitude
+        persist_state(
+            {"vehicles": vehicles},
+            audit_events=[
+                create_audit_event(
+                    AuditEventType.VEHICLE_LOCATION_CHANGED,
+                    vehicle_id=vehicle_id,
+                    summary={
+                        "latitude_before": original_location[0],
+                        "longitude_before": original_location[1],
+                        "latitude_after": latitude,
+                        "longitude_after": longitude,
+                    },
+                )
+            ],
+        )
+    _replace_vehicle_cache(vehicles)
+    return get_vehicle(vehicle_id)
 
 
 def update_vehicle_status(
@@ -128,9 +153,43 @@ def update_vehicle_status(
     status: VehicleStatus | str,
 ) -> EmergencyVehicle:
     """Update a vehicle's operational status."""
-    vehicle = get_vehicle(vehicle_id)
-    vehicle.status = VehicleStatus(status)
-    return vehicle
+    resolved_status = VehicleStatus(status)
+    with transaction() as connection:
+        vehicles = load_records(connection, "vehicles", EmergencyVehicle)
+        vehicle = next((item for item in vehicles if item.vehicle_id == vehicle_id), None)
+        if vehicle is None:
+            raise ValueError(f"Emergency vehicle '{vehicle_id}' does not exist")
+        original_status = vehicle.status
+        vehicle.status = resolved_status
+        persist_state(
+            {"vehicles": vehicles},
+            audit_events=[
+                create_audit_event(
+                    AuditEventType.VEHICLE_STATUS_CHANGED,
+                    vehicle_id=vehicle_id,
+                    summary={
+                        "from_status": original_status.value,
+                        "to_status": vehicle.status.value,
+                    },
+                )
+            ],
+        )
+    _replace_vehicle_cache(vehicles)
+    return get_vehicle(vehicle_id)
+
+
+def _replace_vehicle_cache(vehicles: list[EmergencyVehicle]) -> None:
+    current = {item.vehicle_id: item for item in _VEHICLES}
+    refreshed = []
+    for item in vehicles:
+        cached = current.get(item.vehicle_id)
+        if cached is None:
+            refreshed.append(item)
+            continue
+        for field_name, value in item:
+            setattr(cached, field_name, value)
+        refreshed.append(cached)
+    _VEHICLES[:] = refreshed
 
 
 def get_nearest_available_vehicle(

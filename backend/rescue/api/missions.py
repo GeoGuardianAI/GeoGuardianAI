@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from backend.rescue.models.allocation import ResourceAllocation
 from backend.rescue.models.mission import Mission, MissionPriority, MissionStatus
+from backend.rescue.models.mission_ranking import MissionRankingResponse
 from backend.rescue.services.allocation_service import get_allocations_for_mission
 from backend.rescue.services.mission_service import (
     create_mission,
@@ -12,6 +13,7 @@ from backend.rescue.services.mission_service import (
     list_missions,
     update_mission_status,
 )
+from backend.rescue.services.mission_priority_service import rank_missions
 
 router = APIRouter()
 
@@ -64,14 +66,31 @@ def list_missions_endpoint() -> list[Mission]:
     return list_missions()
 
 
+@router.get(
+    "/missions/ranked",
+    response_model=MissionRankingResponse,
+    summary="List rescue missions by operational priority",
+    description=(
+        "Rank missions by scores from successful prior calls to POST /risk-priority, associated "
+        "by disaster ID, then manually assigned mission priority, lifecycle status, creation "
+        "time, and mission identifier. Cached scores are process-local and ranking does not "
+        "recalculate them; disasters without a cached score are reported as unassessed."
+    ),
+    tags=["Missions"],
+)
+def rank_missions_endpoint() -> MissionRankingResponse:
+    """Return a deterministic ranking with missing disaster risk data identified."""
+    return rank_missions()
+
+
 @router.post(
     "/mission",
     response_model=Mission,
     status_code=status.HTTP_201_CREATED,
     summary="Create a rescue mission",
     description=(
-        "Create a mission for an available rescue team and persist it in the in-memory "
-        "mission service. The service assigns the team and the mission receives its default "
+        "Create a mission for an available rescue team and persist it in the configured "
+        "SQLite database. The service assigns the team and the mission receives its default "
         "ASSIGNED lifecycle status."
     ),
     response_description="The created mission record.",
@@ -97,7 +116,7 @@ def create_mission_endpoint(request: MissionCreateRequest) -> Mission:
     "/mission/{mission_id}",
     response_model=Mission,
     summary="Get a rescue mission",
-    description="Retrieve a mission by its mission identifier from the in-memory mission service.",
+    description="Retrieve a mission by its mission identifier from the mission service.",
     response_description="The requested mission record.",
     tags=["Missions"],
 )
@@ -130,7 +149,9 @@ def get_mission_allocations_endpoint(mission_id: str) -> list[ResourceAllocation
     summary="Update a rescue mission status",
     description=(
         "Update the lifecycle status of an existing mission, while enforcing the mission "
-        "service's transition rules and team availability synchronization."
+        "service's transition rules and team availability synchronization. Completing a mission "
+        "releases its active allocations and restores inventory; cancelling a mission cancels "
+        "its active allocations without restoring inventory."
     ),
     response_description="The updated mission record.",
     tags=["Missions"],

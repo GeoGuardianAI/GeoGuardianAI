@@ -14,7 +14,8 @@ router = APIRouter()
     summary="Calculate disaster risk priority",
     description=(
         "Calculate a deterministic risk score and priority level for a disaster "
-        "using severity, affected population, and critical infrastructure."
+        "using caller-supplied severity, affected population, and critical infrastructure. "
+        "A successful result is cached in process memory by disaster ID for mission ranking."
     ),
     response_description="Calculated disaster risk score, priority level, and reasoning.",
     tags=["Risk Priority"],

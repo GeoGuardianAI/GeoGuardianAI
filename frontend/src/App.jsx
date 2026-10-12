@@ -62,6 +62,34 @@ function MetricCard({ label, value, detail, icon, tone }) {
   return <article className="metric-card"><div className={`metric-icon ${tone}`}><Icon>{icon}</Icon></div><div className="metric-copy"><span>{label}</span><strong>{value}</strong><small>{detail}</small></div><span className="metric-trend">↗</span></article>
 }
 
+function MissionStatusPanel({ ranking, loading, error, updatingId, operationInProgress, feedback, onRefresh, onStatusChange }) {
+  const rankedMissions = ranking?.missions || []
+  return <section className="panel missions-panel" aria-labelledby="active-missions-title">
+    <div className="panel-header"><div><span className="eyebrow">MISSION CONTROL</span><h2 id="active-missions-title">Ranked Missions</h2></div><button className="inventory-allocation-button" type="button" onClick={onRefresh} disabled={loading}>{loading ? 'Loading...' : 'Refresh ranking'}</button></div>
+    {feedback && <span className={`inventory-feedback inventory-feedback-${feedback.type}`} role={feedback.type === 'error' ? 'alert' : 'status'}>{feedback.message}</span>}
+    <p className="recommendation-copy">{ranking?.risk_data_available ? 'Integrated disaster risk scores rank first; assigned priority is a separate mission field.' : 'Disaster risk is unassessed: ranking uses assigned priority, status, mission age, then mission ID. Assigned priority is shown separately.'}</p>
+    {ranking?.missing_risk_disaster_ids?.length > 0 && <span className="muted ranking-risk-gap">Risk unavailable for: {ranking.missing_risk_disaster_ids.join(', ')}</span>}
+    <div className="mission-list">{loading && <span className="muted">Loading ranked missions...</span>}{error && <span className="inventory-feedback inventory-feedback-error" role="alert">{error}</span>}{!loading && !error && rankedMissions.length === 0 && <span className="muted">No missions found.</span>}{!loading && !error && rankedMissions.map((entry) => {
+      const mission = entry.mission
+      const priority = mission.priority || 'MEDIUM'
+      const tone = priority.toLowerCase()
+      const actions = missionStatusActions[mission.status] || []
+      const isUpdating = updatingId === mission.mission_id
+      return <article className="mission-row" key={mission.mission_id}>
+        <div className={`priority-line ${tone}`} />
+        <div className="mission-main">
+          <div className="row-heading"><strong>{mission.mission_id}</strong><span className="mission-rank-badge">RANK #{entry.rank}</span><span className={`badge ${tone}`}>ASSIGNED PRIORITY: {priority}</span></div>
+          <span className="muted">Disaster {mission.disaster_id} · {mission.status}</span>
+          <span className="muted">Team {mission.team_id} · Destination {mission.destination_latitude}, {mission.destination_longitude}</span>
+          {entry.disaster_risk_score !== null && <span className="mission-risk-score">DISASTER RISK SCORE: {entry.disaster_risk_score}/100</span>}
+        </div>
+        {isUpdating ? <span className="muted" role="status">Updating...</span> : actions.map((action) => <button className="text-button" type="button" onClick={() => onStatusChange(mission.mission_id, action.status)} disabled={Boolean(updatingId) || operationInProgress} key={action.status}>{action.label}</button>)}
+        {actions.length === 0 && !isUpdating && <span className="muted terminal-mission-status">Terminal</span>}
+      </article>
+    })}</div>
+  </section>
+}
+
 const resourceTypes = [
   'FOOD',
   'WATER',
@@ -70,20 +98,80 @@ const resourceTypes = [
   'TEMPORARY_SHELTER_SUPPLIES',
 ]
 
-function RecommendedResources({ latitude, longitude, resourceType, onLatitudeChange, onLongitudeChange, onResourceTypeChange, onRecommend, loading, error, resources }) {
+function RecommendedResources({ missions, missionId, quantity, latitude, longitude, resourceType, onMissionChange, onQuantityChange, onLatitudeChange, onLongitudeChange, onResourceTypeChange, onRecommend, loading, operationInProgress, error, resources, recommendationContext }) {
   return (
     <section className="panel recommendation-panel" aria-labelledby="recommended-resources-title">
       <div className="panel-header"><div><span className="eyebrow">READ-ONLY ROUTING</span><h2 id="recommended-resources-title">Recommended Resources</h2></div><span className="recommendation-status">{resources.length ? `${resources.length} ranked` : 'Awaiting query'}</span></div>
-      <p className="recommendation-copy">Find available supplies near a response location before committing inventory.</p>
+      <p className="recommendation-copy">Recommendations never reserve or allocate inventory. Select a mission to use its destination and disaster ID; otherwise search by location.</p>
       <form className="recommendation-controls" onSubmit={(event) => { event.preventDefault(); onRecommend() }}>
-        <label htmlFor="recommendation-latitude">Latitude<input id="recommendation-latitude" type="number" step="any" min="-90" max="90" value={latitude} onChange={(event) => onLatitudeChange(event.target.value)} /></label>
-        <label htmlFor="recommendation-longitude">Longitude<input id="recommendation-longitude" type="number" step="any" min="-180" max="180" value={longitude} onChange={(event) => onLongitudeChange(event.target.value)} /></label>
-        <label htmlFor="recommendation-type">Type<select id="recommendation-type" value={resourceType} onChange={(event) => onResourceTypeChange(event.target.value)}><option value="">Any type</option>{resourceTypes.map((type) => <option value={type} key={type}>{type.replaceAll('_', ' ')}</option>)}</select></label>
-        <button className="inventory-allocation-button" type="submit" disabled={loading}>{loading ? 'Searching...' : 'Find resources'}</button>
+        <label htmlFor="recommendation-mission">Mission (optional)<select id="recommendation-mission" value={missionId} onChange={(event) => onMissionChange(event.target.value)}><option value="">Search by location</option>{missions.map((mission) => <option value={mission.mission_id} key={mission.mission_id}>{mission.mission_id} · {mission.disaster_id} · {mission.status}</option>)}</select></label>
+        <label htmlFor="recommendation-quantity">Minimum quantity<input id="recommendation-quantity" type="number" min="1" step="1" value={quantity} onChange={(event) => onQuantityChange(event.target.value)} /></label>
+        <label htmlFor="recommendation-latitude">Latitude<input id="recommendation-latitude" type="number" step="any" min="-90" max="90" value={latitude} disabled={Boolean(missionId)} onChange={(event) => onLatitudeChange(event.target.value)} /></label>
+        <label htmlFor="recommendation-longitude">Longitude<input id="recommendation-longitude" type="number" step="any" min="-180" max="180" value={longitude} disabled={Boolean(missionId)} onChange={(event) => onLongitudeChange(event.target.value)} /></label>
+        <label htmlFor="recommendation-type">Type filter<select id="recommendation-type" value={resourceType} onChange={(event) => onResourceTypeChange(event.target.value)}><option value="">Any type</option>{resourceTypes.map((type) => <option value={type} key={type}>{type.replaceAll('_', ' ')}</option>)}</select></label>
+        <button className="inventory-allocation-button" type="submit" disabled={loading || operationInProgress}>{loading ? 'Searching...' : missionId ? 'Recommend for mission' : 'Find resources'}</button>
       </form>
       {error && <span className="inventory-feedback inventory-feedback-error">{error}</span>}
+      {resources.length > 0 && <span className="inventory-feedback inventory-feedback-success" role="status">{recommendationContext?.mission_id ? `Read-only recommendations for ${recommendationContext.mission_id} · disaster ${recommendationContext.disaster_id}. No inventory was allocated.` : 'Read-only recommendations. No inventory was allocated.'}</span>}
       {!loading && !error && resources.length === 0 && <span className="muted">Enter a location to see ranked emergency resources.</span>}
       {!loading && !error && resources.length > 0 && <div className="recommended-resource-list">{resources.map((resource, index) => { const distance = resource.distance_km ?? resource.distance ?? resource.estimated_distance_km; return <article className="recommended-resource" key={resource.resource_id}><span className="recommendation-rank">{String(index + 1).padStart(2, '0')}</span><div className="compact-main"><strong>{resource.name}</strong><span>{resource.resource_id} · {resource.resource_type}</span></div><div className="recommended-resource-meta"><b>{resource.available_quantity}</b><small>available</small>{distance !== undefined && <small>{Number(distance).toFixed(1)} km</small>}</div></article>})}</div>}
+    </section>
+  )
+}
+
+function MissionResourceReadiness({ missions, missionId, requirements, assessment, loading, operationInProgress, error, onMissionChange, onRequirementChange, onAssess }) {
+  return (
+    <section className="panel recommendation-panel" aria-labelledby="mission-readiness-title">
+      <div className="panel-header"><div><span className="eyebrow">READ-ONLY ASSESSMENT</span><h2 id="mission-readiness-title">Mission Resource Readiness</h2></div><span className="recommendation-status">{assessment ? assessment.ready ? 'Ready' : 'Shortages found' : 'Awaiting requirements'}</span></div>
+      <p className="recommendation-copy">Select a mission and explicitly choose each resource requirement. Current stock and active mission allocations are reported separately; nothing is reserved.</p>
+      <div className="readiness-controls">
+        <label htmlFor="readiness-mission">Mission<select id="readiness-mission" value={missionId} onChange={(event) => onMissionChange(event.target.value)}><option value="">Select a mission</option>{missions.map((mission) => <option value={mission.mission_id} key={mission.mission_id}>{mission.mission_id} · {mission.disaster_id} · {mission.status}</option>)}</select></label>
+        <div className="readiness-requirements">{resourceTypes.map((resourceType) => {
+          const requirement = requirements[resourceType]
+          return <label className="readiness-requirement" key={resourceType}><input type="checkbox" checked={requirement.included} onChange={(event) => onRequirementChange(resourceType, 'included', event.target.checked)} /><span>{resourceType.replaceAll('_', ' ')}</span><input aria-label={`${resourceType} required quantity`} type="number" min="1" step="1" value={requirement.quantity} disabled={!requirement.included} onChange={(event) => onRequirementChange(resourceType, 'quantity', event.target.value)} /></label>
+        })}</div>
+        <button className="inventory-allocation-button" type="button" disabled={loading || operationInProgress || !missionId} onClick={onAssess}>{loading ? 'Assessing...' : 'Assess readiness'}</button>
+      </div>
+      {error && <span className="inventory-feedback inventory-feedback-error" role="alert">{error}</span>}
+      {assessment && <div className={`readiness-result ${assessment.ready ? 'readiness-result-ready' : 'readiness-result-short'}`} role="status">
+        <strong>{assessment.ready ? 'All requested resources are covered.' : `${assessment.shortages.length} resource requirement(s) have a shortage.`}</strong>
+        {assessment.requirements.map((item) => <span key={item.resource_type}>{item.resource_type.replaceAll('_', ' ')}: requested {item.requested_quantity} · inventory {item.inventory_available_quantity} · allocated to mission {item.mission_allocated_quantity}{item.shortage ? ` · shortage ${item.shortage}` : ' · satisfied'}</span>)}
+      </div>}
+    </section>
+  )
+}
+
+function MissionOperationsWorkflow({ missions, selectedMissionId, onMissionChange, onNavigate }) {
+  const mission = missions.find((item) => item.mission_id === selectedMissionId)
+  const terminal = mission && ['COMPLETED', 'CANCELLED'].includes(mission.status)
+  const stages = [
+    { title: 'Review mission', detail: 'Confirm team, destination, priority, and status.', section: null },
+    { title: 'Assess requirements', detail: 'Choose quantities explicitly; assessment is read-only.', section: 'resources' },
+    { title: 'Review recommendations', detail: 'Inspect nearby eligible inventory without reserving it.', section: 'resources' },
+    { title: 'Allocate resources', detail: 'Commit selected inventory to this mission.', section: 'allocation' },
+    { title: 'Track status & history', detail: 'Update lifecycle status and review allocation records.', section: 'dashboard', secondarySection: 'allocation' },
+  ]
+
+  return (
+    <section className="panel mission-operations-workflow" aria-labelledby="mission-workflow-title">
+      <div className="panel-header"><div><span className="eyebrow">GUIDED OPERATIONS</span><h2 id="mission-workflow-title">Mission Operations Workflow</h2></div><span className="recommendation-status">{mission ? mission.status : 'Select mission'}</span></div>
+      <label className="workflow-mission-select" htmlFor="mission-workflow-select">Mission<select id="mission-workflow-select" value={selectedMissionId} onChange={(event) => onMissionChange(event.target.value)}><option value="">Select an existing mission</option>{missions.map((item) => <option value={item.mission_id} key={item.mission_id}>{item.mission_id} · {item.disaster_id} · {item.status}</option>)}</select></label>
+      {mission && <div className="workflow-mission-summary">
+        <div><small>MISSION / DISASTER</small><strong>{mission.mission_id} · {mission.disaster_id}</strong></div>
+        <div><small>STATUS / PRIORITY</small><strong>{mission.status} · {mission.priority}</strong></div>
+        <div><small>ASSIGNED TEAM</small><strong>{mission.team_id}</strong></div>
+        <div><small>DESTINATION</small><strong>{mission.destination_latitude}, {mission.destination_longitude}</strong></div>
+      </div>}
+      <ol className="mission-workflow-stages">{stages.map((stage, index) => {
+        const disabled = !mission || (terminal && index > 0 && index < 4) || !stage.section
+        return <li key={stage.title}>
+          <span className="workflow-stage-number">{String(index + 1).padStart(2, '0')}</span>
+          <div><strong>{stage.title}</strong><small>{stage.detail}</small></div>
+          {stage.section && <div className="workflow-stage-actions"><button type="button" className="text-button" disabled={disabled} onClick={() => onNavigate(stage.section)}>{terminal && index < 4 ? 'Mission terminal' : index === 4 ? 'Mission status' : 'Open stage'}</button>{stage.secondarySection && <button type="button" className="text-button" disabled={!mission} onClick={() => onNavigate(stage.secondarySection)}>Allocation history</button>}</div>}
+        </li>
+      })}</ol>
+      {!mission && <span className="muted">Select a mission to start the workflow. No requirements are assumed.</span>}
+      {terminal && <span className="inventory-feedback inventory-feedback-error" role="status">This mission is terminal. Resource recommendations, assessment, and allocation are unavailable.</span>}
     </section>
   )
 }
@@ -186,21 +274,45 @@ function EmergencyShelterManagement({ shelters, loading, error, selectedShelterI
 
 const missionPriorities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
 
-function TeamDeploymentPanel({ teams, missions, hospitals, vehicles, selectedTeamId, onTeamChange, form, onFormChange, onDeploy, loading, error, success, result }) {
+function TeamDeploymentPanel({ teams, missions, hospitals, vehicles, selectedTeamId, onTeamChange, form, onFormChange, onDeploy, loading, error, success, result, detectionJson, detectionPreview, detectionError, detectionConfirmed, onDetectionJsonChange, onValidateDetection, onClearDetection, onDetectionConfirmationChange }) {
   const selectedTeam = teams.find((team) => team.team_id === selectedTeamId)
 
   return (
     <section className="panel team-deployment-panel" aria-labelledby="team-deployment-title">
       <div className="panel-header"><div><span className="eyebrow">MISSION ASSIGNMENT</span><h2 id="team-deployment-title">Team Deployment</h2></div><span className="recommendation-status">{selectedTeam ? `${selectedTeam.team_id} selected` : 'Select a team'}</span></div>
+      <section className="detection-handoff" aria-labelledby="detection-handoff-title">
+        <span className="eyebrow">DETECTION ADAPTER</span>
+        <h3 id="detection-handoff-title">Prepare from a detection result</h3>
+        <p className="muted">Paste a result using the documented adapter JSON shape. Validation only prefills this form; it does not create a mission or deploy resources.</p>
+        <label htmlFor="detection-adapter-json">Detection result JSON<textarea id="detection-adapter-json" rows="5" value={detectionJson} onChange={(event) => onDetectionJsonChange(event.target.value)} placeholder={'{"detection_id":"...","disaster_id":"...","disaster_type":"flood","latitude":12.9716,"longitude":77.5946}'} /></label>
+        <div className="detection-handoff-actions">
+          <button className="inventory-allocation-button" type="button" onClick={onValidateDetection} disabled={!detectionJson.trim() || loading}>Validate and prefill</button>
+          {detectionPreview && <button className="text-button" type="button" onClick={onClearDetection} disabled={loading}>Clear detection</button>}
+        </div>
+        {detectionError && <span className="inventory-feedback inventory-feedback-error" role="alert">{detectionError}</span>}
+        {detectionPreview && <div className="deployment-result detection-preview" role="status">
+          <strong>Validated detection · review before creating a mission</strong>
+          <div className="deployment-result-grid">
+            <div><small>DETECTION ID</small><strong>{detectionPreview.detection_id}</strong></div>
+            <div><small>DISASTER ID</small><strong>{detectionPreview.disaster_id}</strong></div>
+            <div><small>TYPE</small><strong>{detectionPreview.disaster_type}</strong></div>
+            <div><small>DETECTED LOCATION</small><strong>{detectionPreview.latitude}, {detectionPreview.longitude}</strong></div>
+            {detectionPreview.severity !== undefined && <div><small>SEVERITY</small><strong>{detectionPreview.severity}/5</strong></div>}
+            {detectionPreview.confidence !== undefined && <div><small>CONFIDENCE</small><strong>{detectionPreview.confidence}</strong></div>}
+            {detectionPreview.affected_population !== undefined && <div><small>AFFECTED POPULATION</small><strong>{detectionPreview.affected_population}</strong></div>}
+          </div>
+          <label className="detection-confirmation"><input type="checkbox" checked={detectionConfirmed} onChange={(event) => onDetectionConfirmationChange(event.target.checked)} disabled={loading} /> I reviewed this detection and authorize creating one assigned mission for it.</label>
+        </div>}
+      </section>
       <form className="team-deployment-form" onSubmit={(event) => { event.preventDefault(); onDeploy() }}>
         <label htmlFor="deployment-team">Rescue team<select id="deployment-team" value={selectedTeamId} onChange={(event) => onTeamChange(event.target.value)}><option value="">Select an available team</option>{teams.map((team) => <option value={team.team_id} key={team.team_id}>{team.team_id} · {team.name} · {team.team_type} · {team.availability}{team.current_mission_id ? ` · ${team.current_mission_id}` : ''}</option>)}</select></label>
-        <label htmlFor="deployment-disaster-id">Disaster ID<input id="deployment-disaster-id" value={form.disasterId} onChange={(event) => onFormChange('disasterId', event.target.value)} placeholder="disaster-001" /></label>
-        <label htmlFor="deployment-latitude">Destination latitude<input id="deployment-latitude" type="number" step="any" min="-90" max="90" value={form.destinationLatitude} onChange={(event) => onFormChange('destinationLatitude', event.target.value)} /></label>
-        <label htmlFor="deployment-longitude">Destination longitude<input id="deployment-longitude" type="number" step="any" min="-180" max="180" value={form.destinationLongitude} onChange={(event) => onFormChange('destinationLongitude', event.target.value)} /></label>
+        <label htmlFor="deployment-disaster-id">Disaster ID<input id="deployment-disaster-id" value={form.disasterId} onChange={(event) => onFormChange('disasterId', event.target.value)} placeholder="disaster-001" readOnly={Boolean(detectionPreview)} /></label>
+        <label htmlFor="deployment-latitude">Destination latitude<input id="deployment-latitude" type="number" step="any" min="-90" max="90" value={form.destinationLatitude} onChange={(event) => onFormChange('destinationLatitude', event.target.value)} readOnly={Boolean(detectionPreview)} /></label>
+        <label htmlFor="deployment-longitude">Destination longitude<input id="deployment-longitude" type="number" step="any" min="-180" max="180" value={form.destinationLongitude} onChange={(event) => onFormChange('destinationLongitude', event.target.value)} readOnly={Boolean(detectionPreview)} /></label>
         <label htmlFor="deployment-priority">Priority<select id="deployment-priority" value={form.priority} onChange={(event) => onFormChange('priority', event.target.value)}>{missionPriorities.map((priority) => <option value={priority} key={priority}>{priority}</option>)}</select></label>
         <label htmlFor="deployment-hospital">Hospital (optional)<select id="deployment-hospital" value={form.hospitalId} onChange={(event) => onFormChange('hospitalId', event.target.value)}><option value="">None</option>{hospitals.map((hospital) => <option value={hospital.hospital_id} key={hospital.hospital_id}>{hospital.hospital_id} · {hospital.name}</option>)}</select></label>
         <label htmlFor="deployment-vehicle">Vehicle (optional)<select id="deployment-vehicle" value={form.vehicleId} onChange={(event) => onFormChange('vehicleId', event.target.value)}><option value="">None</option>{vehicles.map((vehicle) => <option value={vehicle.vehicle_id} key={vehicle.vehicle_id}>{vehicle.vehicle_id} · {vehicle.name || vehicle.registration_number || vehicle.vehicle_id}</option>)}</select></label>
-        <button className="inventory-allocation-button" type="submit" disabled={loading || !selectedTeamId}>{loading ? 'Deploying...' : 'Deploy team'}</button>
+        <button className="inventory-allocation-button" type="submit" disabled={loading || !selectedTeamId || (Boolean(detectionPreview) && !detectionConfirmed)}>{loading ? 'Creating mission...' : detectionPreview ? 'Confirm and create mission' : 'Deploy team'}</button>
       </form>
       {error && <span className="inventory-feedback inventory-feedback-error">{error}</span>}
       {success && <span className="inventory-feedback inventory-feedback-success">{success}</span>}
@@ -211,18 +323,18 @@ function TeamDeploymentPanel({ teams, missions, hospitals, vehicles, selectedTea
   )
 }
 
-function MissionOperationsDetails({ mission, selectedTeam, hospitals, vehicles, routeResult, allocations, missionAllocationsLoading, missionAllocationsError, onStatusChange, missionUpdatingId, onRelease, onCancel, releasingId, cancellingId }) {
+function MissionOperationsDetails({ mission, selectedTeam, hospitals, vehicles, routeResult, allocations, missionAllocationsLoading, missionAllocationsError, onStatusChange, missionUpdatingId, statusFeedback, onRelease, onCancel, releasingId, cancellingId }) {
   if (!mission) return null
   const actions = missionStatusActions[mission.status] || []
   const hospital = hospitals.find((item) => item.hospital_id === mission.hospital_id)
   const vehicle = vehicles.find((item) => item.vehicle_id === mission.vehicle_id)
   return <section className="mission-operations-details">
-    <div className="mission-result-banner"><div><span className="route-result-badge">MISSION DEPLOYED</span><h3>Mission {mission.mission_id} is active in the operations workspace.</h3></div><span className={`badge ${(mission.priority || 'MEDIUM').toLowerCase()}`}>{mission.priority}</span></div>
+    <div className="mission-result-banner"><div><span className="route-result-badge">MISSION OPERATIONS</span><h3>Mission {mission.mission_id} · {mission.status}</h3></div><span className={`badge ${(mission.priority || 'MEDIUM').toLowerCase()}`}>{mission.priority}</span></div>
     <div className="mission-summary-grid">
-      <div><small>MISSION ID</small><strong>{mission.mission_id}</strong></div><div><small>DISASTER ID</small><strong>{mission.disaster_id}</strong></div><div><small>ASSIGNED TEAM</small><strong>{selectedTeam?.name || mission.team_id}</strong><span>{selectedTeam?.team_type || mission.team_id}</span></div><div><small>DESTINATION</small><strong>{mission.destination_latitude}, {mission.destination_longitude}</strong></div><div><small>PRIORITY</small><strong>{mission.priority}</strong></div><div><small>STATUS</small><strong className="status-live">{mission.status}</strong></div><div><small>HOSPITAL</small><strong>{hospital?.name || mission.hospital_id || 'Not linked'}</strong></div><div><small>VEHICLE</small><strong>{vehicle?.name || vehicle?.registration_number || mission.vehicle_id || 'Not linked'}</strong></div><div><small>CREATED</small><strong>{mission.created_at || 'Just now'}</strong></div>
+      <div><small>MISSION ID</small><strong>{mission.mission_id}</strong></div><div><small>DISASTER ID</small><strong>{mission.disaster_id}</strong></div><div><small>ASSIGNED TEAM</small><strong>{selectedTeam?.name || mission.team_id}</strong><span>{selectedTeam ? `${mission.team_id} · ${selectedTeam.team_type}` : 'Assigned rescue team'}</span></div><div><small>DESTINATION</small><strong>{mission.destination_latitude}, {mission.destination_longitude}</strong></div><div><small>PRIORITY</small><strong>{mission.priority}</strong></div><div><small>STATUS</small><strong className="status-live">{mission.status}</strong></div><div><small>HOSPITAL</small><strong>{hospital?.name || mission.hospital_id || 'Not linked'}</strong></div><div><small>VEHICLE</small><strong>{vehicle?.name || vehicle?.registration_number || mission.vehicle_id || 'Not linked'}</strong></div><div><small>CREATED</small><strong>{mission.created_at || 'Just now'}</strong></div>
     </div>
     <div className="mission-related-grid">
-      <section className="related-section"><PanelHeader eyebrow="MISSION STATUS" title="Status actions" />{missionUpdatingId === mission.mission_id ? <span className="muted">Updating mission status...</span> : <div className="status-actions">{actions.map((action) => <button className="text-button" type="button" key={action.status} onClick={() => onStatusChange(mission.mission_id, action.status)}>{action.label} <span aria-hidden="true">↗</span></button>)}{actions.length === 0 && <span className="muted">No further status actions available.</span>}</div>}</section>
+      <section className="related-section"><PanelHeader eyebrow="MISSION STATUS" title="Status actions" />{statusFeedback && <span className={`inventory-feedback inventory-feedback-${statusFeedback.type}`} role={statusFeedback.type === 'error' ? 'alert' : 'status'}>{statusFeedback.message}</span>}{missionUpdatingId !== '' ? <span className="muted" role="status">Updating mission status...</span> : <div className="status-actions">{actions.map((action) => <button className="text-button" type="button" key={action.status} onClick={() => onStatusChange(mission.mission_id, action.status)}>{action.label} <span aria-hidden="true">↗</span></button>)}{actions.length === 0 && <span className="muted">No further status actions available.</span>}</div>}</section>
       <section className="related-section"><PanelHeader eyebrow="ROUTE LINK" title="Route information" />{routeResult ? <div className="related-metrics"><span><small>DISTANCE</small><b>{routeResult.data?.distance_km || routeResult.distance_km} km</b></span><span><small>DURATION</small><b>{routeResult.data?.estimated_duration_minutes || routeResult.estimated_duration_minutes} min</b></span><span><small>RISK</small><b>{routeResult.data?.route_risk_score || routeResult.route_risk_score}</b></span></div> : <span className="muted">No route result linked to this mission yet.</span>}</section>
       <section className="related-section mission-resource-history"><PanelHeader eyebrow="MISSION RESOURCES" title="Allocated resources" />{missionAllocationsLoading && <span className="muted">Loading mission allocations...</span>}{missionAllocationsError && <span className="inventory-feedback inventory-feedback-error">{missionAllocationsError}</span>}{!missionAllocationsLoading && !missionAllocationsError && allocations.length === 0 && <span className="muted">No resources allocated to this mission.</span>}{!missionAllocationsLoading && !missionAllocationsError && allocations.map((allocation) => <div className="related-allocation-row" key={allocation.allocation_id}><div><strong>{allocation.resource_id}</strong><span>{allocation.quantity} units · {allocation.status}</span></div>{allocation.status === 'ALLOCATED' && <div className="allocation-actions"><button className="allocation-release-button" type="button" onClick={() => onRelease(allocation.allocation_id)} disabled={releasingId === allocation.allocation_id || cancellingId === allocation.allocation_id}>Release</button><button className="allocation-cancel-button" type="button" onClick={() => onCancel(allocation.allocation_id)} disabled={releasingId === allocation.allocation_id || cancellingId === allocation.allocation_id}>Cancel</button></div>}</div>)}</section>
     </div>
@@ -296,6 +408,33 @@ function EmergencyMap({ hospitals, vehicles }) {
   )
 }
 
+function AuditHistoryPanel({ missions, events, total, offset, limit, loading, error, missionId, onMissionChange, onPageChange, onRefresh }) {
+  return <section className="panel audit-history-panel" aria-labelledby="audit-history-title">
+    <div className="panel-header"><div><span className="eyebrow">OPERATIONAL RECORD</span><h2 id="audit-history-title">Audit History</h2></div><button className="inventory-allocation-button" type="button" onClick={onRefresh} disabled={loading}>{loading ? 'Loading...' : 'Refresh history'}</button></div>
+    <div className="audit-history-controls"><label htmlFor="audit-mission-filter">Filter by mission<select id="audit-mission-filter" value={missionId} onChange={(event) => onMissionChange(event.target.value)}><option value="">All missions</option>{missions.map((mission) => <option value={mission.mission_id} key={mission.mission_id}>{mission.mission_id} · {mission.disaster_id}</option>)}</select></label></div>
+    {error && <span className="inventory-feedback inventory-feedback-error" role="alert">{error}</span>}
+    {loading && <span className="muted" role="status">Loading audit history...</span>}
+    {!loading && !error && events.length === 0 && <span className="muted">No audit events found.</span>}
+    {!loading && !error && events.length > 0 && <div className="audit-event-list">{events.map((event) => <article className="audit-event-row" key={event.event_id}>
+      <div><strong>{event.event_type.replaceAll('_', ' ')}</strong><span className="muted">{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(event.occurred_at))} · {event.actor}</span></div>
+      <span className="audit-event-summary">{Object.entries(event.summary).map(([key, value]) => `${key.replaceAll('_', ' ')}: ${value ?? '—'}`).join(' · ')}</span>
+      <span className="muted">{[event.mission_id, event.disaster_id, event.resource_id, event.vehicle_id, event.detection_id].filter(Boolean).join(' · ')}</span>
+    </article>)}</div>}
+    <div className="audit-history-pagination"><span className="muted">{total ? `${offset + 1}–${Math.min(offset + events.length, total)} of ${total}` : '0 events'}</span><div><button className="text-button" type="button" onClick={() => onPageChange(Math.max(0, offset - limit))} disabled={loading || offset === 0}>Previous</button><button className="text-button" type="button" onClick={() => onPageChange(offset + limit)} disabled={loading || offset + limit >= total}>Next</button></div></div>
+  </section>
+}
+
+async function requestAuditEventPage(missionId, offset) {
+  const params = new URLSearchParams({ limit: '10', offset: String(offset) })
+  if (missionId) params.set('mission_id', missionId)
+  const response = await fetch(`http://127.0.0.1:8000/audit-events?${params}`)
+  const data = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(data?.detail || `Audit history request failed with status ${response.status}`)
+  }
+  return data
+}
+
 function App() {
   const [currentTime, setCurrentTime] = useState(() => new Date())
   const [activeModule, setActiveModule] = useState('dashboard')
@@ -341,13 +480,25 @@ function App() {
   const [nearestVehicleLoading, setNearestVehicleLoading] = useState(false)
   const [nearestVehicleError, setNearestVehicleError] = useState('')
   const [missions, setMissions] = useState([])
-  const [missionsLoading, setMissionsLoading] = useState(true)
-  const [missionsError, setMissionsError] = useState('')
+  const [missionRanking, setMissionRanking] = useState(null)
+  const [missionRankingLoading, setMissionRankingLoading] = useState(true)
+  const [missionRankingError, setMissionRankingError] = useState('')
   const [missionUpdatingId, setMissionUpdatingId] = useState('')
+  const [missionStatusFeedback, setMissionStatusFeedback] = useState(null)
+  const [auditEvents, setAuditEvents] = useState([])
+  const [auditTotal, setAuditTotal] = useState(0)
+  const [auditOffset, setAuditOffset] = useState(0)
+  const [auditMissionId, setAuditMissionId] = useState('')
+  const [auditLoading, setAuditLoading] = useState(true)
+  const [auditError, setAuditError] = useState('')
   const [deployLoading, setDeployLoading] = useState(false)
   const [deploymentError, setDeploymentError] = useState('')
   const [deploymentSuccess, setDeploymentSuccess] = useState('')
   const [deploymentResult, setDeploymentResult] = useState(null)
+  const [detectionJson, setDetectionJson] = useState('')
+  const [detectionPreview, setDetectionPreview] = useState(null)
+  const [detectionError, setDetectionError] = useState('')
+  const [detectionConfirmed, setDetectionConfirmed] = useState(false)
   const [deploymentTeamId, setDeploymentTeamId] = useState('')
   const [deploymentForm, setDeploymentForm] = useState({
     disasterId: 'dashboard-deployment-demo',
@@ -369,9 +520,17 @@ function App() {
   const [recommendationLatitude, setRecommendationLatitude] = useState('12.9716')
   const [recommendationLongitude, setRecommendationLongitude] = useState('77.5946')
   const [recommendationType, setRecommendationType] = useState('')
+  const [recommendationMissionId, setRecommendationMissionId] = useState('')
+  const [recommendationQuantity, setRecommendationQuantity] = useState('')
+  const [recommendationContext, setRecommendationContext] = useState(null)
   const [recommendedResources, setRecommendedResources] = useState([])
   const [recommendationLoading, setRecommendationLoading] = useState(false)
   const [recommendationError, setRecommendationError] = useState('')
+  const [readinessMissionId, setReadinessMissionId] = useState('')
+  const [readinessRequirements, setReadinessRequirements] = useState(() => Object.fromEntries(resourceTypes.map((type) => [type, { included: false, quantity: '1' }])))
+  const [readinessAssessment, setReadinessAssessment] = useState(null)
+  const [readinessLoading, setReadinessLoading] = useState(false)
+  const [readinessError, setReadinessError] = useState('')
   const [routePlanningForm, setRoutePlanningForm] = useState({
     originLatitude: '12.9716',
     originLongitude: '77.5946',
@@ -388,7 +547,6 @@ function App() {
   const [inventoryAllocationLoading, setInventoryAllocationLoading] = useState(false)
   const [inventoryAllocationError, setInventoryAllocationError] = useState('')
   const [inventoryAllocationResult, setInventoryAllocationResult] = useState(null)
-  const [selectedAllocationMissionId, setSelectedAllocationMissionId] = useState('')
   const [missionAllocationLoading, setMissionAllocationLoading] = useState(false)
   const [missionAllocationError, setMissionAllocationError] = useState('')
   const [missionAllocationResult, setMissionAllocationResult] = useState(null)
@@ -399,6 +557,13 @@ function App() {
   const [allocationReleaseError, setAllocationReleaseError] = useState('')
   const [cancellingAllocationId, setCancellingAllocationId] = useState('')
   const [allocationCancellationError, setAllocationCancellationError] = useState('')
+  const [selectedAllocationMissionId, setSelectedAllocationMissionIdState] = useState('')
+
+  const setSelectedAllocationMissionId = (missionId) => {
+    setSelectedAllocationMissionIdState(missionId)
+    setReadinessMissionId(missionId)
+    setRecommendationMissionId(missionId)
+  }
 
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(new Date()), 1000)
@@ -464,9 +629,6 @@ function App() {
   }
 
   const fetchMissions = async () => {
-    setMissionsLoading(true)
-    setMissionsError('')
-
     try {
       const response = await fetch('http://127.0.0.1:8000/missions')
       if (!response.ok) {
@@ -477,9 +639,60 @@ function App() {
       setMissions(Array.isArray(data) ? data : Array.isArray(data?.value) ? data.value : [])
     } catch (error) {
       setMissions([])
-      setMissionsError(error instanceof Error ? error.message : 'Unable to load active missions.')
+      setNotice(error instanceof Error ? error.message : 'Unable to load missions.')
+    }
+  }
+
+  const refreshResourceInventory = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/available-resources')
+      if (!response.ok) {
+        throw new Error(`Emergency resource request failed with status ${response.status}`)
+      }
+      const data = await response.json()
+      setResources(Array.isArray(data) ? data : Array.isArray(data?.value) ? data.value : [])
+      setResourcesError('')
+    } catch (error) {
+      setResourcesError(error instanceof Error ? error.message : 'Unable to refresh emergency resources.')
+    }
+  }
+
+  const fetchMissionRanking = async () => {
+    setMissionRankingLoading(true)
+    setMissionRankingError('')
+
+    try {
+      const response = await fetch('http://127.0.0.1:8000/missions/ranked')
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.detail || `Mission ranking request failed with status ${response.status}`)
+      }
+      if (!Array.isArray(data?.missions)) {
+        throw new Error('Mission ranking response did not contain a ranked mission list.')
+      }
+      setMissionRanking(data)
+    } catch (error) {
+      setMissionRanking(null)
+      setMissionRankingError(error instanceof Error ? error.message : 'Unable to load mission ranking.')
     } finally {
-      setMissionsLoading(false)
+      setMissionRankingLoading(false)
+    }
+  }
+
+  const fetchAuditEvents = async (missionId = auditMissionId, offset = auditOffset) => {
+    setAuditLoading(true)
+    setAuditError('')
+    try {
+      const data = await requestAuditEventPage(missionId, offset)
+      setAuditEvents(Array.isArray(data?.items) ? data.items : [])
+      setAuditTotal(Number.isInteger(data?.total) ? data.total : 0)
+      setAuditOffset(offset)
+    } catch (error) {
+      setAuditEvents([])
+      setAuditTotal(0)
+      setAuditError(error instanceof Error ? error.message : 'Unable to load audit history.')
+    } finally {
+      setAuditLoading(false)
     }
   }
 
@@ -547,6 +760,28 @@ function App() {
     fetchVehicles()
     fetchShelters()
     fetchMissions()
+    fetchMissionRanking()
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    requestAuditEventPage('', 0)
+      .then((data) => {
+        if (!active) return
+        setAuditEvents(Array.isArray(data?.items) ? data.items : [])
+        setAuditTotal(Number.isInteger(data?.total) ? data.total : 0)
+        setAuditOffset(0)
+      })
+      .catch((error) => {
+        if (!active) return
+        setAuditEvents([])
+        setAuditTotal(0)
+        setAuditError(error instanceof Error ? error.message : 'Unable to load audit history.')
+      })
+      .finally(() => {
+        if (active) setAuditLoading(false)
+      })
+    return () => { active = false }
   }, [])
 
   const fetchMissionAllocations = async (missionId) => {
@@ -807,6 +1042,10 @@ function App() {
       setDeploymentError('Enter a valid destination latitude and longitude.')
       return
     }
+    if (detectionPreview && !detectionConfirmed) {
+      setDeploymentError('Review the detection and confirm before creating a mission.')
+      return
+    }
 
     setDeployLoading(true)
     setDeploymentError('')
@@ -814,10 +1053,21 @@ function App() {
     setDeploymentResult(null)
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/deploy-team', {
+      const response = await fetch(
+        detectionPreview
+          ? 'http://127.0.0.1:8000/mission/from-detection'
+          : 'http://127.0.0.1:8000/deploy-team',
+        {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(detectionPreview ? {
+          detection: detectionPreview,
+          confirmed: detectionConfirmed,
+          team_id: deploymentTeamId,
+          priority: deploymentForm.priority,
+          hospital_id: deploymentForm.hospitalId || null,
+          vehicle_id: deploymentForm.vehicleId || null,
+        } : {
           team_id: deploymentTeamId,
           disaster_id: deploymentForm.disasterId.trim(),
           destination_latitude: destinationLatitude,
@@ -835,13 +1085,87 @@ function App() {
 
       setDeploymentResult(data)
       setSelectedAllocationMissionId(data.mission_id)
-      setDeploymentSuccess(`Mission ${data.mission_id} created successfully.`)
+      setDeploymentSuccess(`Mission ${data.mission_id} created successfully${detectionPreview ? ` from detection ${detectionPreview.detection_id}` : ''}.`)
       setNotice(`Mission ${data.mission_id} assigned to ${data.team_id}.`)
-      await Promise.all([fetchAvailableTeams(), fetchMissions()])
+      if (detectionPreview) {
+        setDetectionConfirmed(false)
+        setDetectionPreview(null)
+        setDetectionJson('')
+      }
+      await Promise.all([fetchAvailableTeams(), fetchMissions(), fetchMissionRanking()])
     } catch (error) {
       setDeploymentError(error instanceof Error ? error.message : 'Unable to deploy rescue team.')
     } finally {
       setDeployLoading(false)
+    }
+  }
+
+  const validateDetectionForPrefill = () => {
+    setDetectionError('')
+    setDeploymentError('')
+    setDeploymentSuccess('')
+    setDeploymentResult(null)
+    setDetectionConfirmed(false)
+    try {
+      const candidate = JSON.parse(detectionJson)
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+        throw new Error('Detection input must be a JSON object.')
+      }
+      const supportedFields = new Set([
+        'detection_id',
+        'disaster_id',
+        'disaster_type',
+        'latitude',
+        'longitude',
+        'severity',
+        'confidence',
+        'affected_population',
+        'critical_infrastructure',
+      ])
+      const unsupportedFields = Object.keys(candidate).filter((field) => !supportedFields.has(field))
+      if (unsupportedFields.length > 0) {
+        throw new Error(`Unsupported detection field(s): ${unsupportedFields.join(', ')}.`)
+      }
+      for (const field of ['detection_id', 'disaster_id', 'disaster_type']) {
+        if (typeof candidate[field] !== 'string' || !candidate[field].trim()) {
+          throw new Error(`${field} must be a non-empty string.`)
+        }
+      }
+      if (!Number.isFinite(candidate.latitude) || candidate.latitude < -90 || candidate.latitude > 90) {
+        throw new Error('latitude must be a number between -90 and 90.')
+      }
+      if (!Number.isFinite(candidate.longitude) || candidate.longitude < -180 || candidate.longitude > 180) {
+        throw new Error('longitude must be a number between -180 and 180.')
+      }
+      if (candidate.severity !== undefined && (!Number.isInteger(candidate.severity) || candidate.severity < 1 || candidate.severity > 5)) {
+        throw new Error('severity must be a whole number between 1 and 5.')
+      }
+      if (candidate.confidence !== undefined && (!Number.isFinite(candidate.confidence) || candidate.confidence < 0 || candidate.confidence > 1)) {
+        throw new Error('confidence must be a number between 0 and 1.')
+      }
+      if (candidate.affected_population !== undefined && (!Number.isInteger(candidate.affected_population) || candidate.affected_population < 0)) {
+        throw new Error('affected_population must be a non-negative whole number.')
+      }
+      if (candidate.critical_infrastructure !== undefined && typeof candidate.critical_infrastructure !== 'boolean') {
+        throw new Error('critical_infrastructure must be true or false.')
+      }
+      const normalized = {
+        ...candidate,
+        detection_id: candidate.detection_id.trim(),
+        disaster_id: candidate.disaster_id.trim(),
+        disaster_type: candidate.disaster_type.trim(),
+      }
+      setDetectionPreview(normalized)
+      setDeploymentForm((currentForm) => ({
+        ...currentForm,
+        disasterId: normalized.disaster_id,
+        destinationLatitude: String(normalized.latitude),
+        destinationLongitude: String(normalized.longitude),
+      }))
+      setNotice(`Detection ${normalized.detection_id} validated. Review and confirm mission creation.`)
+    } catch (error) {
+      setDetectionPreview(null)
+      setDetectionError(error instanceof Error ? error.message : 'Detection JSON is invalid.')
     }
   }
 
@@ -879,13 +1203,78 @@ function App() {
     }
   }
 
+  const assessMissionReadiness = async () => {
+    const requirements = resourceTypes
+      .filter((type) => readinessRequirements[type].included)
+      .map((type) => ({
+        resource_type: type,
+        quantity: Number(readinessRequirements[type].quantity),
+      }))
+
+    if (!readinessMissionId) {
+      setReadinessError('Select a mission before assessing resource readiness.')
+      return
+    }
+    const readinessMission = missions.find((mission) => mission.mission_id === readinessMissionId)
+    if (readinessMission && ['COMPLETED', 'CANCELLED'].includes(readinessMission.status)) {
+      setReadinessError('Resource readiness cannot be assessed for a terminal mission.')
+      return
+    }
+    if (requirements.length === 0) {
+      setReadinessError('Select at least one explicit resource requirement.')
+      setReadinessAssessment(null)
+      return
+    }
+    if (requirements.some((item) => !Number.isInteger(item.quantity) || item.quantity < 1)) {
+      setReadinessError('Enter a positive whole-number quantity for each selected resource type.')
+      setReadinessAssessment(null)
+      return
+    }
+
+    setReadinessLoading(true)
+    setReadinessError('')
+    setReadinessAssessment(null)
+    try {
+      const response = await fetch('http://127.0.0.1:8000/assess-resource-readiness-for-mission', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: readinessMissionId, requirements }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.detail?.message || data?.detail || `Readiness assessment failed with status ${response.status}`)
+      }
+      setReadinessAssessment(data)
+    } catch (error) {
+      setReadinessError(error instanceof Error ? error.message : 'Unable to assess mission resource readiness.')
+    } finally {
+      setReadinessLoading(false)
+    }
+  }
+
   const recommendResources = async () => {
     const latitude = Number(recommendationLatitude)
     const longitude = Number(recommendationLongitude)
+    const quantity = recommendationQuantity === '' ? undefined : Number(recommendationQuantity)
 
-    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    if (recommendationQuantity !== '' && (!Number.isInteger(quantity) || quantity < 1)) {
+      setRecommendationError('Enter a positive whole-number minimum quantity.')
+      setRecommendedResources([])
+      setRecommendationContext(null)
+      return
+    }
+    const recommendationMission = missions.find((mission) => mission.mission_id === recommendationMissionId)
+    if (recommendationMission && ['COMPLETED', 'CANCELLED'].includes(recommendationMission.status)) {
+      setRecommendationError('Resources cannot be recommended for a terminal mission.')
+      setRecommendedResources([])
+      setRecommendationContext(null)
+      return
+    }
+
+    if (!recommendationMissionId && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180)) {
       setRecommendationError('Enter a valid latitude and longitude.')
       setRecommendedResources([])
+      setRecommendationContext(null)
       return
     }
 
@@ -893,10 +1282,14 @@ function App() {
     setRecommendationError('')
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/allocate-resource', {
+      const response = await fetch(`http://127.0.0.1:8000/${recommendationMissionId ? 'recommend-resources-for-mission' : 'allocate-resource'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(recommendationMissionId ? {
+          mission_id: recommendationMissionId,
+          ...(recommendationType ? { resource_type: recommendationType } : {}),
+          ...(quantity !== undefined ? { quantity } : {}),
+        } : {
           disaster_id: 'dashboard-resource-search',
           disaster_type: 'RESOURCE_SEARCH',
           latitude,
@@ -913,8 +1306,10 @@ function App() {
       }
 
       setRecommendedResources(Array.isArray(data?.recommended_resources) ? data.recommended_resources : [])
+      setRecommendationContext(data?.mission_id ? data : null)
     } catch (error) {
       setRecommendedResources([])
+      setRecommendationContext(null)
       setRecommendationError(error instanceof Error ? error.message : 'Unable to recommend emergency resources.')
     } finally {
       setRecommendationLoading(false)
@@ -969,9 +1364,16 @@ function App() {
   const allocateResourceToMission = async () => {
     const selectedResource = resources.find((resource) => String(resource.resource_id) === selectedResourceId)
     const quantity = Number(allocationQuantity)
+    const mission = missions.find((item) => item.mission_id === selectedAllocationMissionId)
+
+    if (missionAllocationLoading || missionUpdatingId) return
 
     if (!selectedAllocationMissionId) {
       setMissionAllocationError('Select a mission before allocating.')
+      return
+    }
+    if (mission && ['COMPLETED', 'CANCELLED'].includes(mission.status)) {
+      setMissionAllocationError('Resources cannot be allocated to a terminal mission.')
       return
     }
 
@@ -1012,7 +1414,13 @@ function App() {
       )))
       setAllocationQuantity('')
       setMissionAllocationResult(data)
-      await fetchMissionAllocations(selectedAllocationMissionId)
+      await Promise.all([
+        fetchMissionAllocations(selectedAllocationMissionId),
+        refreshResourceInventory(),
+        readinessRequirements && Object.values(readinessRequirements).some((item) => item.included)
+          ? assessMissionReadiness()
+          : Promise.resolve(),
+      ])
     } catch (error) {
       setMissionAllocationError(error instanceof Error ? error.message : 'Unable to allocate resource to mission.')
     } finally {
@@ -1041,7 +1449,13 @@ function App() {
           ? { ...resource, available_quantity: resource.available_quantity + data.quantity }
           : resource
       )))
-      await fetchMissionAllocations(selectedAllocationMissionId)
+      await Promise.all([
+        fetchMissionAllocations(selectedAllocationMissionId),
+        refreshResourceInventory(),
+        Object.values(readinessRequirements).some((item) => item.included)
+          ? assessMissionReadiness()
+          : Promise.resolve(),
+      ])
     } catch (error) {
       setAllocationReleaseError(error instanceof Error ? error.message : 'Unable to release resource allocation.')
     } finally {
@@ -1070,7 +1484,13 @@ function App() {
           ? { ...allocation, status: data.status }
           : allocation
       )))
-      await fetchMissionAllocations(selectedAllocationMissionId)
+      await Promise.all([
+        fetchMissionAllocations(selectedAllocationMissionId),
+        refreshResourceInventory(),
+        Object.values(readinessRequirements).some((item) => item.included)
+          ? assessMissionReadiness()
+          : Promise.resolve(),
+      ])
     } catch (error) {
       setAllocationCancellationError(error instanceof Error ? error.message : 'Unable to cancel resource allocation.')
     } finally {
@@ -1139,6 +1559,7 @@ function App() {
       const data = await response.json()
       setRiskResult(data)
       setNotice(`Risk priority calculated: ${data.priority_level}, risk score ${data.risk_score}.`)
+      await fetchMissionRanking()
     } catch (error) {
       setRiskError(error instanceof Error ? error.message : 'Unable to calculate risk priority.')
     } finally {
@@ -1219,7 +1640,10 @@ function App() {
   }
 
   const updateMissionStatus = async (missionId, newStatus) => {
+    if (missionUpdatingId) return
+
     setMissionUpdatingId(missionId)
+    setMissionStatusFeedback(null)
 
     try {
       const response = await fetch(`http://127.0.0.1:8000/mission/${missionId}/status`, {
@@ -1229,16 +1653,39 @@ function App() {
       })
 
       if (!response.ok) {
-        throw new Error(`Mission update failed with status ${response.status}`)
+        const data = await response.json().catch(() => null)
+        throw new Error(data?.detail || `Mission update failed with status ${response.status}`)
       }
 
       const updatedMission = await response.json()
       setMissions((currentMissions) => currentMissions.map((mission) => (
         mission.mission_id === missionId ? updatedMission : mission
       )))
+      setDeploymentResult((currentMission) => currentMission?.mission_id === missionId ? updatedMission : currentMission)
       setNotice(`Mission ${missionId} updated to ${newStatus}.`)
+      setMissionStatusFeedback({
+        type: 'success',
+        message: `Mission ${missionId} updated to ${newStatus}.`,
+      })
+      if (['COMPLETED', 'CANCELLED'].includes(updatedMission.status)) {
+        setReadinessAssessment(null)
+        setRecommendedResources([])
+        setRecommendationContext(null)
+      } else if (Object.values(readinessRequirements).some((item) => item.included)) {
+        await assessMissionReadiness()
+      }
+      await Promise.all([
+        fetchMissions(),
+        fetchAvailableTeams(),
+        fetchMissionRanking(),
+        fetchMissionAllocations(missionId),
+        refreshResourceInventory(),
+        fetchAuditEvents(),
+      ])
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Unable to update mission status.')
+      const message = error instanceof Error ? error.message : 'Unable to update mission status.'
+      setMissionStatusFeedback({ type: 'error', message })
+      setNotice(message)
     } finally {
       setMissionUpdatingId('')
     }
@@ -1253,10 +1700,27 @@ function App() {
     || inventoryQuantity > selectedResource.available_quantity
   const missionAllocationDisabled = missionAllocationLoading
     || !selectedAllocationMissionId
+    || ['COMPLETED', 'CANCELLED'].includes(
+      missions.find((mission) => mission.mission_id === selectedAllocationMissionId)?.status,
+    )
+    || Boolean(missionUpdatingId || releasingAllocationId || cancellingAllocationId)
     || !selectedResource
     || !Number.isInteger(inventoryQuantity)
     || inventoryQuantity < 1
     || inventoryQuantity > selectedResource.available_quantity
+
+  const selectWorkflowMission = (missionId) => {
+    setSelectedAllocationMissionId(missionId)
+    setReadinessMissionId(missionId)
+    setRecommendationMissionId(missionId)
+    setReadinessAssessment(null)
+    setReadinessError('')
+    setRecommendedResources([])
+    setRecommendationContext(null)
+    setRecommendationError('')
+    setMissionAllocationError('')
+    setMissionAllocationResult(null)
+  }
 
   const navigateTo = (moduleId) => {
     setActiveModule(moduleId)
@@ -1290,18 +1754,66 @@ function App() {
         <section className="welcome-row"><div><span className="eyebrow">COMMAND CENTER / OVERVIEW</span><h1>{greeting}, Commander.</h1><p>Real-time operational overview for the metropolitan response network.</p></div><div className="weather"><span className="weather-icon">☼</span><div><strong>28°C</strong><span>Clear skies · Visibility 12 km</span></div></div></section>
         <nav className="module-nav" aria-label="Command center sections">{navigationItems.map((item) => <button key={item.id} type="button" className={activeModule === item.id ? 'active' : ''} aria-current={activeModule === item.id ? 'location' : undefined} onClick={() => navigateTo(item.id)}><Icon>{item.icon}</Icon><span>{item.label}</span></button>)}</nav>
         <section id="dashboard" className="page-section dashboard-section"><section className="metrics-grid" aria-label="Operational summary"><MetricCard label="Active Missions" value="12" detail="3 critical priority" icon="⌁" tone="red" /><MetricCard label="Rescue Teams" value="08" detail="of 14 total teams" icon="♙" tone="teal" /><MetricCard label="Available Vehicles" value="23" detail="4 currently deployed" icon="▣" tone="blue" /><MetricCard label="Emergency Resources" value="94%" detail="Readiness level" icon="◈" tone="amber" /></section>
-        <div className="command-grid"><section className="panel missions-panel"><PanelHeader eyebrow="LIVE OPERATIONS" title="Active Missions" action="View all missions" /><div className="mission-list">{missionsLoading && <span className="muted">Loading active missions...</span>}{missionsError && <span className="muted">{missionsError}</span>}{!missionsLoading && !missionsError && missions.length === 0 && <span className="muted">No active missions.</span>}{!missionsLoading && !missionsError && missions.map((mission) => { const priority = mission.priority || 'MEDIUM'; const tone = priority.toLowerCase(); const actions = missionStatusActions[mission.status] || []; const isUpdating = missionUpdatingId === mission.mission_id; return <article className="mission-row" key={mission.mission_id}><div className={`priority-line ${tone}`} /><div className="mission-main"><div className="row-heading"><strong>{mission.disaster_id}</strong><span className={`badge ${tone}`}>{priority}</span></div><span className="muted">{mission.mission_id} · {mission.status}</span></div><div className="mission-eta"><small>STATUS</small><strong>{mission.status}</strong></div>{isUpdating ? <span className="muted">Updating...</span> : actions.map((action) => <button className="text-button" type="button" onClick={() => updateMissionStatus(mission.mission_id, action.status)} disabled={missionUpdatingId !== ''} key={action.status}>{action.label}</button>)}<button className="row-arrow" type="button" aria-label={`Open ${mission.mission_id}`}>↗</button></article> })}</div></section><section className="panel map-panel"><PanelHeader eyebrow="GEOSPATIAL VIEW" title="Emergency Response Map" /><div className="map-placeholder"><EmergencyMap hospitals={hospitals} vehicles={vehicles} /></div><div className="map-footer"><span><i className="legend-dot critical" /> Active incidents</span><span><i className="legend-dot hospital" /> Hospitals</span><span><i className="legend-dot team" /> Rescue teams</span><span><i className="legend-dot vehicle" /> Emergency vehicles</span></div></section></div>
+        <div className="command-grid"><MissionStatusPanel ranking={missionRanking} loading={missionRankingLoading} error={missionRankingError} updatingId={missionUpdatingId} operationInProgress={Boolean(missionAllocationLoading || releasingAllocationId || cancellingAllocationId)} feedback={missionStatusFeedback} onRefresh={() => Promise.all([fetchMissions(), fetchMissionRanking()])} onStatusChange={updateMissionStatus} /><section className="panel map-panel"><PanelHeader eyebrow="GEOSPATIAL VIEW" title="Emergency Response Map" /><div className="map-placeholder"><EmergencyMap hospitals={hospitals} vehicles={vehicles} /></div><div className="map-footer"><span><i className="legend-dot critical" /> Active incidents</span><span><i className="legend-dot hospital" /> Hospitals</span><span><i className="legend-dot team" /> Rescue teams</span><span><i className="legend-dot vehicle" /> Emergency vehicles</span></div></section></div>
+        <MissionOperationsWorkflow missions={missions} selectedMissionId={selectedAllocationMissionId} onMissionChange={selectWorkflowMission} onNavigate={navigateTo} />
+        <AuditHistoryPanel missions={missions} events={auditEvents} total={auditTotal} offset={auditOffset} limit={10} loading={auditLoading} error={auditError} missionId={auditMissionId} onMissionChange={(missionId) => { setAuditMissionId(missionId); fetchAuditEvents(missionId, 0) }} onPageChange={(offset) => fetchAuditEvents(auditMissionId, offset)} onRefresh={() => fetchAuditEvents()} />
         <div className="lower-grid"><section className="panel"><PanelHeader eyebrow="MEDICAL NETWORK" title="Nearby Hospitals" action="View network" /><div className="compact-list">{hospitalsLoading && <span className="muted">Loading nearby hospitals...</span>}{hospitalsError && <span className="muted">{hospitalsError}</span>}{!hospitalsLoading && !hospitalsError && hospitals.map((hospital) => <article className="compact-row" key={hospital.hospital_id}><div className={`facility-icon ${hospital.emergency_available ? 'green' : 'amber'}`}><Icon>✚</Icon></div><div className="compact-main"><strong>{hospital.name}</strong><span>{hospital.emergency_available ? 'Emergency Available' : 'Emergency Unavailable'} · {hospital.available_beds} beds available</span></div><span className="distance">Nearest<br /><small>away</small></span></article>)}</div></section><section className="panel"><PanelHeader eyebrow="FIELD PERSONNEL" title="Rescue Teams" action="Manage teams" /><div className="compact-list">{teamsLoading && <span className="muted">Loading rescue teams...</span>}{teamsError && <span className="muted">{teamsError}</span>}{!teamsLoading && !teamsError && teams.map((team) => <article className="compact-row" key={team.team_id}><div className={`avatar ${team.availability === 'AVAILABLE' ? 'teal' : 'orange'}`}>{(team.name || 'Team').split(' ').map((part) => part[0]).join('').slice(0, 2)}</div><div className="compact-main"><strong>{team.name}</strong><span>{(team.specialization || ['General Response']).join(' · ')} · {team.members} members</span></div><span className={`availability ${team.availability === 'AVAILABLE' ? 'available' : 'standby'}`}><i />{team.availability}</span></article>)}</div></section><section className="panel"><PanelHeader eyebrow="SUPPLY INVENTORY" title="Emergency Resources" action="View inventory" /><div className="inventory-allocation-controls"><label htmlFor="inventory-resource">Resource<select id="inventory-resource" value={selectedResourceId} onChange={(event) => { setSelectedResourceId(event.target.value); setInventoryAllocationError(''); setInventoryAllocationResult(null); setMissionAllocationError(''); setMissionAllocationResult(null) }}><option value="">Select a resource</option>{resources.map((resource) => <option value={resource.resource_id} key={resource.resource_id}>{resource.name} ({resource.available_quantity} available)</option>)}</select></label><label htmlFor="allocation-mission">Mission<select id="allocation-mission" value={selectedAllocationMissionId} onChange={(event) => { setSelectedAllocationMissionId(event.target.value); setMissionAllocationError(''); setMissionAllocationResult(null) }}><option value="">Select a mission</option>{missions.map((mission) => <option value={mission.mission_id} key={mission.mission_id}>{mission.mission_id} — {mission.disaster_id} — {mission.status}</option>)}</select></label><label htmlFor="inventory-quantity">Quantity<input id="inventory-quantity" type="number" min="1" max={selectedResource?.available_quantity} value={allocationQuantity} onChange={(event) => { setAllocationQuantity(event.target.value); setInventoryAllocationError(''); setInventoryAllocationResult(null); setMissionAllocationError(''); setMissionAllocationResult(null) }} /></label><button className="inventory-allocation-button" type="button" onClick={allocateResourceInventory} disabled={inventoryAllocationDisabled}>{inventoryAllocationLoading ? 'Allocating...' : 'Allocate inventory'}</button><button className="inventory-allocation-button" type="button" onClick={allocateResourceToMission} disabled={missionAllocationDisabled}>{missionAllocationLoading ? 'Allocating...' : 'Allocate to Mission'}</button></div>{inventoryAllocationError && <span className="inventory-feedback inventory-feedback-error">{inventoryAllocationError}</span>}{inventoryAllocationResult && <span className="inventory-feedback inventory-feedback-success">Allocated {inventoryAllocationResult.quantity} {inventoryAllocationResult.resourceName}.</span>}{missionAllocationError && <span className="inventory-feedback inventory-feedback-error">{missionAllocationError}</span>}{missionAllocationResult && <span className="inventory-feedback inventory-feedback-success">Allocated {missionAllocationResult.quantity} {selectedResource?.name || missionAllocationResult.resource_id} to {missionAllocationResult.mission_id}.</span>}<div className="resource-list">{resourcesLoading && <span className="muted">Loading emergency resources...</span>}{resourcesError && <span className="muted">{resourcesError}</span>}{!resourcesLoading && !resourcesError && resources.map((resource) => { const resourceType = (resource.resource_type || '').toUpperCase(); const tone = resourceType.includes('MEDICAL') ? 'red' : resourceType.includes('BLANKET') ? 'cyan' : 'blue'; const icon = resourceType.includes('MEDICAL') ? '✚' : resourceType.includes('WATER') ? '◒' : '▱'; return <article className="resource-row" key={resource.resource_id}><div className={`resource-icon ${tone}`}><Icon>{icon}</Icon></div><div><strong>{resource.name}</strong><span>{resource.resource_type}</span></div><b>{resource.available_quantity}</b></article>})}</div></section><section className="panel"><PanelHeader eyebrow="VEHICLE TRACKING" title="Emergency Vehicles" action="View fleet" /><div className="compact-list">{vehiclesLoading && <span className="muted">Loading emergency vehicles...</span>}{vehiclesError && <span className="muted">{vehiclesError}</span>}{!vehiclesLoading && !vehiclesError && vehicles.map((vehicle) => <article className="compact-row" key={vehicle.vehicle_id}><div className={`facility-icon ${vehicle.status === 'AVAILABLE' ? 'green' : 'amber'}`}><Icon>▣</Icon></div><div className="compact-main"><strong>{vehicle.registration_number}</strong><span>{vehicle.vehicle_type} · {vehicle.status} · Capacity: {vehicle.capacity} · Mission: {vehicle.assigned_mission_id || 'Unassigned'}</span></div><span className={`availability ${vehicle.status === 'AVAILABLE' ? 'available' : 'standby'}`}><i />{vehicle.status}</span></article>)}</div></section></div>
         <section className="quick-actions"><div><span className="eyebrow">COMMAND CONSOLE</span><h2>Quick Actions</h2><p className="notice"><span className="pulse-dot" />{notice}</p></div><div className="action-buttons">{['Allocate Resource', 'Deploy Team', 'Find Nearest Hospital', 'Find Nearest Vehicle', 'Optimize Route', 'Calculate Risk Priority'].map((action, index) => <button type="button" className={`action-button action-${index}`} onClick={() => action === 'Allocate Resource' ? allocateResource() : action === 'Deploy Team' ? deployTeam() : action === 'Find Nearest Hospital' ? findNearestHospital() : action === 'Find Nearest Vehicle' ? findNearestVehicle() : action === 'Optimize Route' ? optimizeRoute() : action === 'Calculate Risk Priority' ? calculateRiskPriority() : handleAction(action)} disabled={(action === 'Deploy Team' && deployLoading) || (action === 'Find Nearest Hospital' && nearestHospitalLoading) || (action === 'Find Nearest Vehicle' && nearestVehicleLoading) || (action === 'Calculate Risk Priority' && riskLoading)} key={action}><span>{['＋', '↗', '✚', '▣', '⌁', '⚠'][index]}</span>{action}<b>→</b></button>)}</div>{nearestHospitalLoading && <span className="muted">Finding nearest hospital...</span>}{nearestHospitalError && <span className="muted">{nearestHospitalError}</span>}{nearestHospitalResult && !nearestHospitalLoading && !nearestHospitalError && <div><strong>Nearest Hospital Result</strong><div><span>Hospital: {nearestHospitalResult.name}</span><span>Available beds: {nearestHospitalResult.available_beds}</span><span>Available ICU: {nearestHospitalResult.available_icu}</span><span>Emergency availability: {nearestHospitalResult.emergency_available ? 'Available' : 'Unavailable'}</span></div></div>}{nearestVehicleLoading && <span className="muted">Finding nearest vehicle...</span>}{nearestVehicleError && <span className="muted">{nearestVehicleError}</span>}{nearestVehicleResult && !nearestVehicleLoading && !nearestVehicleError && <div><strong>Nearest Vehicle Result</strong><div><span>Registration number: {nearestVehicleResult.registration_number}</span><span>Vehicle type: {nearestVehicleResult.vehicle_type}</span><span>Status: {nearestVehicleResult.status}</span><span>Capacity: {nearestVehicleResult.capacity}</span><span>Assigned mission: {nearestVehicleResult.assigned_mission_id || "Unassigned"}</span></div></div>}{allocationLoading && <span className="muted">Allocating resources...</span>}{allocationError && <span className="muted">{allocationError}</span>}{allocationResult && !allocationLoading && !allocationError && <div><strong>Allocation Result</strong><div><span>Hospital: {allocationResult.recommended_hospital.name}</span><span>Rescue Team: {allocationResult.recommended_rescue_team.name}</span><span>Priority Score: {allocationResult.priority_score}</span><span>Estimated Distance: {allocationResult.estimated_distance_km} km</span></div><p>{allocationResult.reasoning}</p></div>}{routeLoading && <span className="muted">Optimizing route...</span>}{routeError && <span className="muted">{routeError}</span>}{routeResult && !routeLoading && !routeError && <div><strong>Route Result</strong><div><span>{routeResult.distance_km} km</span><span>{routeResult.estimated_duration_minutes} min</span><span>{Number(routeResult.route_risk_score).toFixed(2)}</span><span>{routeResult.route_status}</span></div><p>{routeResult.explanation}</p></div>}{riskLoading && <span className="muted">Calculating risk priority...</span>}{riskError && <span className="muted">{riskError}</span>}{riskResult && !riskLoading && !riskError && <div><strong>Risk Priority Result</strong><div><span>{riskResult.risk_score}</span><span>{riskResult.priority_level}</span></div><p>{riskResult.reasoning}</p></div>}</section>
         </section>
         <section id="hospital" className="page-section"><ModuleHeader moduleId="hospital" /><NearestHospital latitude={nearestHospitalLatitude} longitude={nearestHospitalLongitude} onLatitudeChange={setNearestHospitalLatitude} onLongitudeChange={setNearestHospitalLongitude} onFind={findNearestHospital} loading={nearestHospitalLoading} error={nearestHospitalError} result={nearestHospitalResult} /></section>
-        <section id="resources" className="page-section"><ModuleHeader moduleId="resources" /><RecommendedResources latitude={recommendationLatitude} longitude={recommendationLongitude} resourceType={recommendationType} onLatitudeChange={setRecommendationLatitude} onLongitudeChange={setRecommendationLongitude} onResourceTypeChange={setRecommendationType} onRecommend={recommendResources} loading={recommendationLoading} error={recommendationError} resources={recommendedResources} /></section>
+        <section id="resources" className="page-section"><ModuleHeader moduleId="resources" /><RecommendedResources missions={missions.filter((mission) => !['COMPLETED', 'CANCELLED'].includes(mission.status))} missionId={recommendationMissionId} quantity={recommendationQuantity} latitude={recommendationLatitude} longitude={recommendationLongitude} resourceType={recommendationType} onMissionChange={selectWorkflowMission} onQuantityChange={(value) => { setRecommendationQuantity(value); setRecommendationError(''); setRecommendedResources([]); setRecommendationContext(null) }} onLatitudeChange={setRecommendationLatitude} onLongitudeChange={setRecommendationLongitude} onResourceTypeChange={setRecommendationType} onRecommend={recommendResources} loading={recommendationLoading} operationInProgress={Boolean(readinessLoading || missionAllocationLoading || missionUpdatingId)} error={recommendationError} resources={recommendedResources} recommendationContext={recommendationContext} /><MissionResourceReadiness missions={missions.filter((mission) => !['COMPLETED', 'CANCELLED'].includes(mission.status))} missionId={readinessMissionId} requirements={readinessRequirements} assessment={readinessAssessment} loading={readinessLoading} operationInProgress={Boolean(recommendationLoading || missionAllocationLoading || missionUpdatingId)} error={readinessError} onMissionChange={selectWorkflowMission} onRequirementChange={(type, field, value) => { setReadinessRequirements((current) => ({ ...current, [type]: { ...current[type], [field]: value } })); setReadinessAssessment(null); setReadinessError('') }} onAssess={assessMissionReadiness} /></section>
         <section id="route" className="page-section"><ModuleHeader moduleId="route" /><RescueRoutePlanning {...routePlanningForm} onChange={(field, value) => setRoutePlanningForm((currentForm) => ({ ...currentForm, [field]: value }))} onPlan={planRescueRoute} loading={routePlanningLoading} error={routePlanningError} result={routePlanningResult} /></section>
         <section id="teams" className="page-section"><ModuleHeader moduleId="teams" /><AvailableRescueTeams teams={teams} loading={teamsLoading} error={teamsError} onRefresh={fetchAvailableTeams} /></section>
-        <section id="deployment" className="page-section"><ModuleHeader moduleId="deployment" /><div className="mission-workspace"><TeamDeploymentPanel teams={teams} missions={missions} hospitals={hospitals} vehicles={vehicles} selectedTeamId={deploymentTeamId} onTeamChange={(teamId) => { setDeploymentTeamId(teamId); setDeploymentError(''); setDeploymentSuccess('') }} form={deploymentForm} onFormChange={(field, value) => setDeploymentForm((currentForm) => ({ ...currentForm, [field]: value }))} onDeploy={deployTeam} loading={deployLoading} error={deploymentError} success={deploymentSuccess} result={deploymentResult} /><MissionOperationsDetails mission={deploymentResult || missions.find((mission) => mission.mission_id === selectedAllocationMissionId)} selectedTeam={teams.find((team) => team.team_id === (deploymentResult?.team_id || missions.find((mission) => mission.mission_id === selectedAllocationMissionId)?.team_id))} hospitals={hospitals} vehicles={vehicles} routeResult={routePlanningResult || routeResult} allocations={missionAllocations} missionAllocationsLoading={missionAllocationsLoading} missionAllocationsError={missionAllocationsError} onStatusChange={updateMissionStatus} missionUpdatingId={missionUpdatingId} onRelease={releaseResourceAllocation} onCancel={cancelResourceAllocation} releasingId={releasingAllocationId} cancellingId={cancellingAllocationId} /></div></section>
+        <section id="deployment" className="page-section">
+          <ModuleHeader moduleId="deployment" />
+          <div className="mission-workspace">
+            <TeamDeploymentPanel
+              teams={teams}
+              missions={missions}
+              hospitals={hospitals}
+              vehicles={vehicles}
+              selectedTeamId={deploymentTeamId}
+              onTeamChange={(teamId) => {
+                setDeploymentTeamId(teamId)
+                setDeploymentError('')
+                setDeploymentSuccess('')
+                setDetectionConfirmed(false)
+              }}
+              form={deploymentForm}
+              onFormChange={(field, value) => {
+                setDeploymentForm((currentForm) => ({ ...currentForm, [field]: value }))
+                setDetectionConfirmed(false)
+              }}
+              onDeploy={deployTeam}
+              loading={deployLoading}
+              error={deploymentError}
+              success={deploymentSuccess}
+              result={deploymentResult}
+              detectionJson={detectionJson}
+              detectionPreview={detectionPreview}
+              detectionError={detectionError}
+              detectionConfirmed={detectionConfirmed}
+              onDetectionJsonChange={(value) => {
+                setDetectionJson(value)
+                setDetectionPreview(null)
+                setDetectionError('')
+                setDetectionConfirmed(false)
+              }}
+              onValidateDetection={validateDetectionForPrefill}
+              onClearDetection={() => {
+                setDetectionJson('')
+                setDetectionPreview(null)
+                setDetectionError('')
+                setDetectionConfirmed(false)
+              }}
+              onDetectionConfirmationChange={setDetectionConfirmed}
+            />
+            <MissionOperationsDetails mission={deploymentResult || missions.find((mission) => mission.mission_id === selectedAllocationMissionId)} selectedTeam={teams.find((team) => team.team_id === (deploymentResult?.team_id || missions.find((mission) => mission.mission_id === selectedAllocationMissionId)?.team_id))} hospitals={hospitals} vehicles={vehicles} routeResult={routePlanningResult || routeResult} allocations={missionAllocations} missionAllocationsLoading={missionAllocationsLoading} missionAllocationsError={missionAllocationsError} onStatusChange={updateMissionStatus} missionUpdatingId={missionUpdatingId} statusFeedback={missionStatusFeedback} onRelease={releaseResourceAllocation} onCancel={cancelResourceAllocation} releasingId={releasingAllocationId} cancellingId={cancellingAllocationId} />
+          </div>
+        </section>
         <section id="vehicles" className="page-section"><ModuleHeader moduleId="vehicles" /><EmergencyVehicleTracking vehicles={vehicles} loading={vehiclesLoading} error={vehiclesError} selectedVehicleId={selectedVehicleId} onVehicleChange={selectVehicle} latitude={vehicleLatitude} longitude={vehicleLongitude} onLatitudeChange={setVehicleLatitude} onLongitudeChange={setVehicleLongitude} status={vehicleStatus} onStatusChange={setVehicleStatus} onRefresh={fetchVehicles} onUpdateLocation={() => updateVehicle('location')} onUpdateStatus={() => updateVehicle('status')} updateLoading={vehicleUpdateLoading} success={vehicleUpdateSuccess} updateError={vehicleUpdateError} /></section>
         <section id="shelters" className="page-section"><ModuleHeader moduleId="shelters" /><EmergencyShelterManagement shelters={shelters} loading={sheltersLoading} error={sheltersError} selectedShelterId={selectedShelterId} onShelterChange={selectShelter} capacity={shelterCapacity} onCapacityChange={setShelterCapacity} nearestLatitude={shelterNearestLatitude} nearestLongitude={shelterNearestLongitude} onNearestLatitudeChange={setShelterNearestLatitude} onNearestLongitudeChange={setShelterNearestLongitude} nearestShelter={nearestShelter} nearestLoading={nearestShelterLoading} nearestError={nearestShelterError} onFindNearest={findNearestShelter} onRefresh={fetchShelters} onUpdateCapacity={updateShelterCapacity} updateLoading={shelterUpdateLoading} success={shelterUpdateSuccess} updateError={shelterUpdateError} /></section>
-        <section id="allocation" className="page-section"><ModuleHeader moduleId="allocation" /><ResourceAllocationWorkspace resources={resources} missions={missions} selectedResourceId={selectedResourceId} allocationQuantity={allocationQuantity} onResourceChange={(resourceId) => { setSelectedResourceId(resourceId); setInventoryAllocationError(''); setMissionAllocationError('') }} onQuantityChange={setAllocationQuantity} onAllocateInventory={allocateResourceInventory} onAllocateMission={allocateResourceToMission} inventoryAllocationDisabled={inventoryAllocationDisabled} missionAllocationDisabled={missionAllocationDisabled} inventoryLoading={inventoryAllocationLoading} missionLoading={missionAllocationLoading} inventoryError={inventoryAllocationError} missionError={missionAllocationError} inventoryResult={inventoryAllocationResult} missionResult={missionAllocationResult} selectedMissionId={selectedAllocationMissionId} onMissionChange={(missionId) => { setSelectedAllocationMissionId(missionId); setMissionAllocationError(''); setMissionAllocationResult(null); setAllocationReleaseError(''); setAllocationCancellationError('') }}><ResourceAllocationDashboard missions={missions} selectedMissionId={selectedAllocationMissionId} onMissionChange={(missionId) => { setSelectedAllocationMissionId(missionId); setMissionAllocationError(''); setMissionAllocationResult(null); setAllocationReleaseError(''); setAllocationCancellationError('') }} allocations={missionAllocations} loading={missionAllocationsLoading} error={missionAllocationsError} onRefresh={() => fetchMissionAllocations(selectedAllocationMissionId)} onRelease={releaseResourceAllocation} onCancel={cancelResourceAllocation} releasingId={releasingAllocationId} cancellingId={cancellingAllocationId} releaseError={allocationReleaseError} cancellationError={allocationCancellationError} /></ResourceAllocationWorkspace></section>
+        <section id="allocation" className="page-section"><ModuleHeader moduleId="allocation" /><ResourceAllocationWorkspace resources={resources} missions={missions} selectedResourceId={selectedResourceId} allocationQuantity={allocationQuantity} onResourceChange={(resourceId) => { setSelectedResourceId(resourceId); setInventoryAllocationError(''); setMissionAllocationError('') }} onQuantityChange={setAllocationQuantity} onAllocateInventory={allocateResourceInventory} onAllocateMission={allocateResourceToMission} inventoryAllocationDisabled={inventoryAllocationDisabled} missionAllocationDisabled={missionAllocationDisabled} inventoryLoading={inventoryAllocationLoading} missionLoading={missionAllocationLoading} inventoryError={inventoryAllocationError} missionError={missionAllocationError} inventoryResult={inventoryAllocationResult} missionResult={missionAllocationResult} selectedMissionId={selectedAllocationMissionId} onMissionChange={selectWorkflowMission}><ResourceAllocationDashboard missions={missions} selectedMissionId={selectedAllocationMissionId} onMissionChange={selectWorkflowMission} allocations={missionAllocations} loading={missionAllocationsLoading} error={missionAllocationsError} onRefresh={() => fetchMissionAllocations(selectedAllocationMissionId)} onRelease={releaseResourceAllocation} onCancel={cancelResourceAllocation} releasingId={releasingAllocationId} cancellingId={cancellingAllocationId} releaseError={allocationReleaseError} cancellationError={allocationCancellationError} /></ResourceAllocationWorkspace></section>
       </div><footer><span>GEOGUARDIAN AI <b>•</b> RESCUE MANAGEMENT MODULE</span><span>Local time: {currentClock} <i className="pulse-dot" /></span></footer>
       <section className="panel mission-allocation-history"><PanelHeader eyebrow="RESOURCE AUDIT" title="Mission Allocation History" />{allocationReleaseError && <span className="inventory-feedback inventory-feedback-error">{allocationReleaseError}</span>}{allocationCancellationError && <span className="inventory-feedback inventory-feedback-error">{allocationCancellationError}</span>}{!selectedAllocationMissionId && <span className="muted">Select a mission to view allocation history.</span>}{selectedAllocationMissionId && missionAllocationsLoading && <span className="muted">Loading mission allocations...</span>}{selectedAllocationMissionId && missionAllocationsError && <span className="muted">{missionAllocationsError}</span>}{selectedAllocationMissionId && !missionAllocationsLoading && !missionAllocationsError && missionAllocations.length === 0 && <span className="muted">No resource allocations for this mission.</span>}{selectedAllocationMissionId && !missionAllocationsLoading && !missionAllocationsError && missionAllocations.length > 0 && <div className="compact-list">{missionAllocations.map((allocation) => <article className="compact-row" key={allocation.allocation_id}><div className="compact-main"><strong>{allocation.allocation_id}</strong><span>{allocation.resource_id} · {allocation.quantity} units · {allocation.disaster_id}</span><span>{allocation.status} · {allocation.allocated_at}</span></div>{allocation.status === 'ALLOCATED' && <div className="allocation-actions"><button className="allocation-release-button" type="button" onClick={() => releaseResourceAllocation(allocation.allocation_id)} disabled={releasingAllocationId === allocation.allocation_id || cancellingAllocationId === allocation.allocation_id}>{releasingAllocationId === allocation.allocation_id ? 'Releasing...' : 'Release'}</button><button className="allocation-cancel-button" type="button" onClick={() => cancelResourceAllocation(allocation.allocation_id)} disabled={cancellingAllocationId === allocation.allocation_id || releasingAllocationId === allocation.allocation_id}>{cancellingAllocationId === allocation.allocation_id ? 'Cancelling...' : 'Cancel'}</button></div>}</article>)}</div>}</section>
       </div>
