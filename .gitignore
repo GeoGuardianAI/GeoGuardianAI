@@ -217,3 +217,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated detection data and test uploads
+backend/rescue/data/detection.sqlite3*
+backend/rescue/data/uploads/
