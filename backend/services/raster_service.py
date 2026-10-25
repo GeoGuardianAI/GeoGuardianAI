@@ -15,6 +15,8 @@ class RasterService:
         return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
     def geospatial_center(self, path: Path) -> Coordinates | None:
+        if path.suffix.lower() not in {".tif", ".tiff"}:
+            return None
         try:
             import rasterio
             from rasterio.errors import RasterioIOError

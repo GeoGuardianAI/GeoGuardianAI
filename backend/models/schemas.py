@@ -45,6 +45,14 @@ class Incident(BaseModel):
             "coordinates": [self.coordinates.lng, self.coordinates.lat],
         }
 
+class DetectionJob(BaseModel):
+    job_id: str
+    status: Literal["queued", "running", "completed", "failed"]
+    created_at: datetime
+    updated_at: datetime
+    result: Incident | None = None
+    error: str | None = None
+
 class AnalysisRequest(BaseModel):
     asset_id: str
     coordinates: Coordinates | None = None

@@ -1,4 +1,5 @@
 """GeoGuardian Member 1 disaster-detection API."""
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
@@ -18,9 +19,12 @@ async def lifespan(app: FastAPI):
     storage.mkdir(parents=True, exist_ok=True)
     app.state.repository = DetectionRepository(storage / "detections.db")
     app.state.repository.initialize()
+    app.state.repository.fail_active_jobs("Processing was interrupted by an API restart.")
     app.state.yolo_service = YoloService()
     app.state.sam_service = SamService()
     app.state.tracker = ByteTrackService(app.state.yolo_service)
+    app.state.inference_semaphore = asyncio.Semaphore(1)
+    app.state.detection_tasks = {}
     storage.joinpath("uploads").mkdir(parents=True, exist_ok=True)
     app.state.uploads = {
         asset["asset_id"]: asset["path"]

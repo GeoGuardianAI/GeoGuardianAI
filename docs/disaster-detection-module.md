@@ -38,7 +38,8 @@ The dashboard provides overview/map, satellite and drone intake, detection histo
 1. `POST /upload-image` or `POST /upload-video` as multipart form data (`file`). Keep the returned `asset_id`.
 2. Send `asset_id`, optional `coordinates`, and optional `location` to `POST /detect` or `POST /segment`.
 3. Send two image asset IDs to `POST /change-detection`; send a video asset ID to `POST /track`.
-4. Read an individual persisted incident with `GET /detections/{incident_id}`. Consume the incident list via `GET /detections` and GeoJSON via `GET /heatmap`.
+4. For asynchronous detection, send the same request body to `POST /jobs/detection` and use its `job_id` to monitor `GET /jobs/{job_id}` or `WS /ws/detection/{job_id}`. Completed jobs contain the normal incident response under `result`; failed jobs include an `error`.
+5. Read an individual persisted incident with `GET /detections/{incident_id}`. Consume the incident list via `GET /detections` and GeoJSON via `GET /heatmap`.
 
 Detection responses include the source asset ID/name, configured model label, processing status, optional coordinates, and a GeoJSON Point when a location is known. Coordinates supplied by the caller take precedence; otherwise, GeoTIFF coordinates are derived from its CRS and raster center. Image upload responses include raster dimensions and any available GeoTIFF center. Images without geospatial metadata remain unlocated; the API does not substitute a default coordinate.
 
@@ -54,7 +55,7 @@ The OpenCV change detector is a deterministic pixel-difference baseline, not a t
 
 Uploaded files and incident/asset metadata are stored under `backend/data/`; this directory is runtime state and should be mapped to durable storage in deployment. SQLite is the existing repository implementation; replace `DetectionRepository` with the shared project database implementation without changing the route contracts.
 
-Inference and video tracking endpoints currently execute within their HTTP requests. The API does not yet expose a WebSocket job stream or asynchronous job processing.
+Detection jobs run in-process and model inference is serialized through one inference slot. Job states are persisted in SQLite; jobs left queued or running after an API restart are marked failed rather than silently retried. This lightweight implementation is suitable for a single API process, not a distributed worker queue.
 
 ## Development tests
 

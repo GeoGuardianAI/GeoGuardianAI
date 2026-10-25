@@ -124,3 +124,31 @@ def test_sam_service_requires_runtime_configuration(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="SAM2 is not configured"):
         SamService().segment(np.zeros((8, 8, 3), dtype=np.uint8), [], None)
+
+
+def test_detection_job_round_trips_and_interrupted_jobs_fail(tmp_path) -> None:
+    from models.schemas import DetectionJob
+    from services.repository import DetectionRepository
+
+    repository = DetectionRepository(tmp_path / "jobs.db")
+    repository.initialize()
+    now = datetime.now(timezone.utc)
+    queued = DetectionJob(
+        job_id="JOB-QUEUED",
+        status="queued",
+        created_at=now,
+        updated_at=now,
+    )
+    repository.save_job(queued)
+    assert repository.get_job(queued.job_id) == queued
+
+    running = queued.model_copy(update={"job_id": "JOB-RUNNING", "status": "running"})
+    repository.save_job(running)
+    repository.fail_active_jobs("API restarted")
+
+    interrupted = repository.get_job(running.job_id)
+    assert interrupted is not None
+    assert interrupted.status == "failed"
+    assert interrupted.error == "API restarted"
+    assert repository.get_job(queued.job_id).status == "failed"
+    repository.close()

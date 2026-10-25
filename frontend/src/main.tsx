@@ -21,6 +21,7 @@ type Incident = {
   model_name?: string;
   processing_status?: string;
 };
+type DetectionJob = { job_id: string; status: 'queued' | 'running' | 'completed' | 'failed'; result: Incident | null; error: string | null };
 type GeoFeature = { geometry: { type: string; coordinates: number[] } | null; properties: { incident_id: string; risk: number; disaster: string; timestamp: string } };
 type Screen = 'overview' | 'satellite' | 'drone' | 'history' | 'heatmap' | 'compare' | 'segment';
 
@@ -55,6 +56,54 @@ const uploadFile = <T,>(path: string, file: File, onProgress: (progress: number)
     const form = new FormData();
     form.append('file', file);
     request.send(form);
+  });
+
+const waitForDetectionJob = (jobId: string, onStatus: (status: string) => void): Promise<DetectionJob> =>
+  new Promise((resolve, reject) => {
+    let socket: WebSocket | undefined;
+    let polling = false;
+    let settled = false;
+    const finish = (job: DetectionJob) => {
+      if (settled) return;
+      settled = true;
+      socket?.close();
+      resolve(job);
+    };
+    const fallbackToPolling = () => {
+      if (polling || settled) return;
+      polling = true;
+      socket?.close();
+      const poll = async () => {
+        try {
+          const job = await api<DetectionJob>(`/jobs/${encodeURIComponent(jobId)}`);
+          onStatus(job.status);
+          if (job.status === 'completed' || job.status === 'failed') finish(job);
+          else window.setTimeout(() => void poll(), 1000);
+        } catch (error) {
+          if (!settled) { settled = true; reject(error); }
+        }
+      };
+      void poll();
+    };
+    try {
+      const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      socket = new WebSocket(`${scheme}//${window.location.host}/api/ws/detection/${encodeURIComponent(jobId)}`);
+      socket.onmessage = (event) => {
+        try {
+          const job = JSON.parse(String(event.data)) as DetectionJob;
+          onStatus(job.status);
+          if (job.status === 'completed' || job.status === 'failed') finish(job);
+        } catch (error) {
+          settled = true;
+          socket?.close();
+          reject(error);
+        }
+      };
+      socket.onerror = fallbackToPolling;
+      socket.onclose = () => { if (!settled && !polling) fallbackToPolling(); };
+    } catch {
+      fallbackToPolling();
+    }
   });
 
 function App() {
@@ -168,7 +217,11 @@ function UploadPanel({ kind, onIncident }: { kind: 'image' | 'video'; onIncident
         if ((latitude.trim() === '') !== (longitude.trim() === '')) throw new Error('Provide both latitude and longitude, or leave both blank.');
         const coordinates = latitude.trim() ? { lat: Number(latitude), lng: Number(longitude) } : undefined;
         if (coordinates && (!Number.isFinite(coordinates.lat) || !Number.isFinite(coordinates.lng) || coordinates.lat < -90 || coordinates.lat > 90 || coordinates.lng < -180 || coordinates.lng > 180)) throw new Error('Coordinates must be valid latitude (-90 to 90) and longitude (-180 to 180).');
-        const incident = await api<Incident>('/detect', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ asset_id: asset, coordinates }) });
+        setNotice('Submitting detection job…');
+        const queued = await api<DetectionJob>('/jobs/detection', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ asset_id: asset, coordinates }) });
+        const completed = await waitForDetectionJob(queued.job_id, (status) => setNotice(`Detection job ${queued.job_id}: ${status}`));
+        if (completed.status !== 'completed' || !completed.result) throw new Error(completed.error ?? 'Detection job did not produce a result.');
+        const incident = completed.result;
         setNotice(`Detection complete · ${incident.detected_objects.length} objects · ${incident.model_name ?? 'model not specified'}`);
         await queryClient.invalidateQueries({ queryKey: ['detections'] });
         onIncident?.(incident);
