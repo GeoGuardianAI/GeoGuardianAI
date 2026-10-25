@@ -5,7 +5,10 @@ import logging
 
 from fastapi import FastAPI
 from routes import change_detection, detection, heatmap, segmentation, tracking, upload
+from services.bytetrack_service import ByteTrackService
+from services.sam_service import SamService
 from services.repository import DetectionRepository
+from services.yolo_service import YoloService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -15,8 +18,15 @@ async def lifespan(app: FastAPI):
     storage.mkdir(parents=True, exist_ok=True)
     app.state.repository = DetectionRepository(storage / "detections.db")
     app.state.repository.initialize()
+    app.state.yolo_service = YoloService()
+    app.state.sam_service = SamService()
+    app.state.tracker = ByteTrackService(app.state.yolo_service)
     storage.joinpath("uploads").mkdir(parents=True, exist_ok=True)
-    app.state.uploads = {}
+    app.state.uploads = {
+        asset["asset_id"]: asset["path"]
+        for asset in app.state.repository.list_assets()
+        if Path(str(asset["path"])).is_file()
+    }
     yield
     app.state.repository.close()
 

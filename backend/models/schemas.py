@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, computed_field
 
 class Coordinates(BaseModel):
     lat: float = Field(ge=-90, le=90)
@@ -10,7 +10,10 @@ class BoundingBox(BaseModel):
     x1: float; y1: float; x2: float; y2: float
 
 class DetectedObject(BaseModel):
-    class_name: str = Field(serialization_alias="class")
+    class_name: str = Field(
+        validation_alias=AliasChoices("class", "class_name"),
+        serialization_alias="class",
+    )
     confidence: float = Field(ge=0, le=1)
     bbox: BoundingBox | None = None
     track_id: int | None = None
@@ -22,11 +25,25 @@ class Incident(BaseModel):
     confidence: float = Field(ge=0, le=1)
     affected_area_sqkm: float = Field(ge=0)
     damaged_buildings: int = Field(ge=0)
-    damaged_roads: list[str] = []
-    damaged_bridges: list[str] = []
-    detected_objects: list[DetectedObject] = []
-    coordinates: Coordinates
+    damaged_roads: list[str] = Field(default_factory=list)
+    damaged_bridges: list[str] = Field(default_factory=list)
+    detected_objects: list[DetectedObject] = Field(default_factory=list)
+    coordinates: Coordinates | None = None
+    source_asset_id: str | None = None
+    source_file: str | None = None
+    model_name: str = "unknown"
+    processing_status: Literal["completed"] = "completed"
     timestamp: datetime
+
+    @computed_field
+    @property
+    def geojson_geometry(self) -> dict[str, object] | None:
+        if self.coordinates is None:
+            return None
+        return {
+            "type": "Point",
+            "coordinates": [self.coordinates.lng, self.coordinates.lat],
+        }
 
 class AnalysisRequest(BaseModel):
     asset_id: str
@@ -42,3 +59,13 @@ class ChangeRequest(BaseModel):
 class TrackRequest(BaseModel):
     asset_id: str
     max_frames: int = Field(default=300, ge=1, le=3000)
+    frame_stride: int = Field(default=10, ge=1, le=300)
+
+class PointPrompt(BaseModel):
+    x: float = Field(ge=0)
+    y: float = Field(ge=0)
+    label: Literal[0, 1] = 1
+
+class SegmentationRequest(AnalysisRequest):
+    points: list[PointPrompt] = Field(default_factory=list, max_length=32)
+    box: BoundingBox | None = None

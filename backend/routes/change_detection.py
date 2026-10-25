@@ -10,4 +10,4 @@ async def change_detection(payload: ChangeRequest, request: Request) -> dict:
     try:
         raster = RasterService()
         return ChangeFormerService().compare(raster.read(upload_path(request, payload.before_asset_id)), raster.read(upload_path(request, payload.after_asset_id)))
-    except ValueError as exc: raise HTTPException(422, detail=str(exc)) from exc
+    except (ValueError, RuntimeError) as exc: raise HTTPException(422, detail=str(exc)) from exc
