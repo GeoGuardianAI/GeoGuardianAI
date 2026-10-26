@@ -1,0 +1,123 @@
+{
+  "dataset": "F:\\SEMV\\edi\\datasets\\kagglehub\\datasets\\varpit94\\disaster-images-dataset\\versions\\1\\Comprehensive Disaster Dataset(CDD)",
+  "split_method": "stratified random image-level split; source/event grouping is unavailable",
+  "class_counts": {
+    "Damaged_Infrastructure": 1453,
+    "Fire_Disaster": 933,
+    "Human_Damage": 240,
+    "Land_Disaster": 657,
+    "Non_Damage": 9237,
+    "Water_Disaster": 1035
+  },
+  "excluded_unreadable_images": [
+    "F:\\SEMV\\edi\\datasets\\kagglehub\\datasets\\varpit94\\disaster-images-dataset\\versions\\1\\Comprehensive Disaster Dataset(CDD)\\Damaged_Infrastructure\\Infrastructure\\05_01_0261.png",
+    "F:\\SEMV\\edi\\datasets\\kagglehub\\datasets\\varpit94\\disaster-images-dataset\\versions\\1\\Comprehensive Disaster Dataset(CDD)\\Human_Damage\\02_0069.png"
+  ],
+  "train_samples": 9487,
+  "validation_samples": 2034,
+  "test_samples": 2034,
+  "device": "cuda",
+  "seed": 42,
+  "best_epoch": 20,
+  "best_validation_loss": 0.6281322411965714,
+  "test": {
+    "accuracy": 0.8657817109144543,
+    "confusion_matrix": [
+      [
+        178,
+        4,
+        6,
+        16,
+        1,
+        13
+      ],
+      [
+        10,
+        116,
+        2,
+        2,
+        7,
+        3
+      ],
+      [
+        9,
+        1,
+        25,
+        1,
+        0,
+        0
+      ],
+      [
+        14,
+        1,
+        1,
+        60,
+        1,
+        22
+      ],
+      [
+        25,
+        20,
+        17,
+        17,
+        1267,
+        40
+      ],
+      [
+        22,
+        3,
+        3,
+        8,
+        4,
+        115
+      ]
+    ],
+    "class_names": [
+      "Damaged_Infrastructure",
+      "Fire_Disaster",
+      "Human_Damage",
+      "Land_Disaster",
+      "Non_Damage",
+      "Water_Disaster"
+    ],
+    "per_class": {
+      "Damaged_Infrastructure": {
+        "precision": 0.689922480620155,
+        "recall": 0.8165137614678899,
+        "f1": 0.7478991596638656,
+        "support": 218
+      },
+      "Fire_Disaster": {
+        "precision": 0.8,
+        "recall": 0.8285714285714286,
+        "f1": 0.8140350877192983,
+        "support": 140
+      },
+      "Human_Damage": {
+        "precision": 0.46296296296296297,
+        "recall": 0.6944444444444444,
+        "f1": 0.5555555555555555,
+        "support": 36
+      },
+      "Land_Disaster": {
+        "precision": 0.5769230769230769,
+        "recall": 0.6060606060606061,
+        "f1": 0.5911330049261083,
+        "support": 99
+      },
+      "Non_Damage": {
+        "precision": 0.98984375,
+        "recall": 0.9141414141414141,
+        "f1": 0.9504876219054763,
+        "support": 1386
+      },
+      "Water_Disaster": {
+        "precision": 0.5958549222797928,
+        "recall": 0.7419354838709677,
+        "f1": 0.660919540229885,
+        "support": 155
+      }
+    },
+    "sample_count": 2034
+  }
+}

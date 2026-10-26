@@ -1,0 +1,6 @@
+-r requirements.txt
+kagglehub>=0.3,<1
+Pillow>=10,<13
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.10.0+cu130
+torchvision==0.25.0+cu130

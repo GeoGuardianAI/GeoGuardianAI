@@ -53,6 +53,33 @@ SAM 2 segmentation is enabled when the SAM2/PyTorch runtime is installed and bot
 
 The OpenCV change detector is a deterministic pixel-difference baseline, not a trained ChangeFormer model. It requires equal-sized, pre-aligned images; pixel differences are observations and not confirmed disaster damage.
 
+## Image classification training
+
+The Kaggle dataset `varpit94/disaster-images-dataset` contains image-level class labels. The downloaded version has six folders: `Damaged_Infrastructure`, `Fire_Disaster`, `Human_Damage`, `Land_Disaster`, `Non_Damage`, and `Water_Disaster`; these are the classifier labels, not four YOLO object classes. The dataset is imbalanced, so training uses class-weighted loss. It does not contain the bounding-box annotations needed to train the YOLO object detector used by `/detect` and `/track`. A classifier checkpoint must not be configured as `GEOGUARDIAN_YOLO_WEIGHTS`.
+
+Install the additional training dependencies from `backend` and download the dataset. The training requirements use CUDA 13.0 wheels suitable for the project's RTX 4050 training GPU:
+
+```powershell
+python -m pip install -r requirements-training.txt
+python ..\scripts\download_disaster_classifier_dataset.py --cache-dir ..\datasets\kagglehub
+```
+
+Use the dataset path printed by the download script to train and evaluate the classifier:
+
+```powershell
+python ..\scripts\train_disaster_classifier.py --data-dir "<dataset path>" --device auto
+```
+
+The trainer discovers the class folders from the dataset, creates stratified train/validation/test splits, trains from random initialization (matching the supplied `weights=None` architecture), saves the best validation checkpoint to `models/disaster_classifier/efficientnet_b0.pth`, and writes held-out test metrics beside it. The downloaded dataset cache is excluded from Git; the resulting checkpoint and metrics report are versioned in the repository. This checkpoint is a standalone classification artifact; no classifier API or UI is enabled by this training workflow.
+
+Run a standalone prediction after training:
+
+```powershell
+python ..\scripts\predict_disaster_classifier.py --checkpoint ..\models\disaster_classifier\efficientnet_b0.pth --image "<image path>"
+```
+
+Predictions are image-level class scores, not object locations or verified damage assessments. Softmax confidence is not calibrated.
+
 Uploaded files and incident/asset metadata are stored under `backend/data/`; this directory is runtime state and should be mapped to durable storage in deployment. SQLite is the existing repository implementation; replace `DetectionRepository` with the shared project database implementation without changing the route contracts.
 
 Detection jobs run in-process and model inference is serialized through one inference slot. Job states are persisted in SQLite; jobs left queued or running after an API restart are marked failed rather than silently retried. This lightweight implementation is suitable for a single API process, not a distributed worker queue.
