@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { initialIncidentState, type IncidentState } from "../data/incidentState";
 
 type Resource = {
   id: string;
@@ -10,47 +11,53 @@ type Resource = {
   status: "READY" | "LIMITED";
 };
 
-const initialResources: Resource[] = [
+const buildResources = (inc: IncidentState): Resource[] => [
   {
     id: "boats",
     name: "Rescue Boats",
     icon: "🚤",
-    total: 12,
-    available: 8,
-    active: 4,
+    total: inc.assets.rescueBoats.total,
+    available: inc.assets.rescueBoats.available,
+    active: inc.assets.rescueBoats.total - inc.assets.rescueBoats.available,
     status: "READY",
   },
   {
     id: "ambulances",
     name: "Ambulances",
     icon: "🚑",
-    total: 16,
-    available: 10,
-    active: 6,
+    total: inc.assets.ambulances.total,
+    available: inc.assets.ambulances.available,
+    active: inc.assets.ambulances.total - inc.assets.ambulances.available,
     status: "READY",
   },
   {
     id: "medical",
     name: "Medical Teams",
     icon: "🧑‍⚕️",
-    total: 8,
-    available: 5,
-    active: 3,
+    total: inc.assets.medicalTeams.total,
+    available: inc.assets.medicalTeams.available,
+    active: inc.assets.medicalTeams.total - inc.assets.medicalTeams.available,
     status: "LIMITED",
   },
   {
     id: "helicopters",
     name: "Helicopters",
     icon: "🚁",
-    total: 3,
-    available: 2,
-    active: 1,
+    total: inc.assets.helicopters.total,
+    available: inc.assets.helicopters.available,
+    active: inc.assets.helicopters.total - inc.assets.helicopters.available,
     status: "READY",
   },
 ];
 
-export const ResourceManagement: React.FC = () => {
-  const [resources, setResources] = useState<Resource[]>(initialResources);
+interface ResourceManagementProps {
+  incident?: IncidentState;
+}
+
+export const ResourceManagement: React.FC<ResourceManagementProps> = ({
+  incident = initialIncidentState,
+}) => {
+  const [resources, setResources] = useState<Resource[]>(() => buildResources(incident));
   const [deploymentApplied, setDeploymentApplied] = useState(false);
 
   const totalAvailable = useMemo(
@@ -61,11 +68,14 @@ export const ResourceManagement: React.FC = () => {
   const handleDeployment = () => {
     setResources((current) =>
       current.map((resource) => {
-        if (resource.id === "boats" && resource.available >= 5) {
+        if (
+          resource.id === "boats" &&
+          resource.available >= incident.assets.rescueBoats.required
+        ) {
           return {
             ...resource,
-            available: resource.available - 5,
-            active: resource.active + 5,
+            available: resource.available - incident.assets.rescueBoats.required,
+            active: resource.active + incident.assets.rescueBoats.required,
           };
         }
 
@@ -87,7 +97,7 @@ export const ResourceManagement: React.FC = () => {
 
           <p className="resources-subtitle">
             Monitor availability and coordinate response resources for the
-            active Pune flood incident.
+            active {incident.location} flood incident.
           </p>
         </div>
 
@@ -199,10 +209,10 @@ export const ResourceManagement: React.FC = () => {
             <div className="recommendation-icon">🚤</div>
 
             <div>
-              <h3>Deploy 5 rescue boats</h3>
+              <h3>Deploy {incident.assets.rescueBoats.required} rescue boats</h3>
 
               <p>
-                Position five available rescue boats near the flooded NH-48
+                Position {incident.assets.rescueBoats.required} available rescue boats near the flooded NH-48
                 corridor to support evacuation and stranded-person rescue.
               </p>
             </div>
@@ -214,13 +224,13 @@ export const ResourceManagement: React.FC = () => {
             <div className="reason-grid">
               <div>
                 <span>River level</span>
-                <strong>1.9 m</strong>
-                <small>Warning: 1.8 m</small>
+                <strong>{incident.riverLevel} m</strong>
+                <small>Warning: {incident.criticalRiverLevel} m</small>
               </div>
 
               <div>
                 <span>Population exposure</span>
-                <strong>22,400</strong>
+                <strong>{incident.populationAtRisk.toLocaleString()}</strong>
                 <small>Affected population</small>
               </div>
 

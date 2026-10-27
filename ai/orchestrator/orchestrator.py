@@ -29,28 +29,18 @@ class GeoGuardianOrchestrator:
         self.preload_default_sops()
 
     def preload_default_sops(self):
+        """
+        Ensures the vector database is populated with verified documents from rag_knowledge_base.
+        Never injects mock documents.
+        """
         if not self.db.documents:
-            print("[Orchestrator] Loading default SOP documents...")
-            default_docs = [
-                {
-                    "id": "flood_sop_1",
-                    "text": "Flood evacuation rules state that evacuation must begin immediately when water levels exceed the warning threshold of 1.8 meters. The local emergency responders must establish a safety perimeter of 500 meters around the Mutha river basin. Rescue boats should be deployed to Highway 48 for motorist evacuation.",
-                    "metadata": {"title": "Flood_SOP.txt", "pages": 1, "disaster_type": "Flood", "state": "Maharashtra", "district": "Pune"}
-                },
-                {
-                    "id": "flood_sop_2",
-                    "text": "In the event of a severe bridge blockage, medical rescue teams must be positioned at Sassoon General Hospital to treat critical victims. If Sangam Bridge is damaged, traffic must be rerouted through Krishna River Bridge. Temporary shelters should be established at the District Sports Complex.",
-                    "metadata": {"title": "Flood_SOP.txt", "pages": 2, "disaster_type": "Flood", "state": "Maharashtra", "district": "Pune"}
-                },
-                {
-                    "id": "wildfire_sop_1",
-                    "text": "Wildfire response protocol requires establishing a fire perimeter when dry winds exceed 25 km/h. Responders should immediately block the mountain pass road and evacuate residential structures within a 2 kilometer radius. Water trucks must be routed via Route 9.",
-                    "metadata": {"title": "Wildfire_SOP.txt", "pages": 1, "disaster_type": "Wildfire", "state": "Maharashtra", "district": "Satara"}
-                }
-            ]
-            for doc in default_docs:
-                vector = self.embedder.get_embedding(doc["text"])
-                self.db.upsert(doc["id"], vector, doc["text"], doc["metadata"])
+            print("[Orchestrator] Vector DB empty. Loading verified real SOP documents from rag_knowledge_base...")
+            try:
+                from scripts.sync_knowledge_base_to_vectordb import sync_vectordb
+                sync_vectordb()
+                self.db.load_local_db()
+            except Exception as e:
+                print(f"[Orchestrator] Real knowledge base sync notice: {e}")
 
     def process_query(self, 
                       query: str, 
@@ -58,7 +48,8 @@ class GeoGuardianOrchestrator:
                       search_mode: str = "hybrid", 
                       filters: Optional[Dict[str, Any]] = None,
                       target_lang: str = "en",
-                      model_choice: str = "Llama-3 (Local)") -> Dict[str, Any]:
+                      model_choice: str = "Llama-3 (Local)",
+                      incident: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Coordinates the entire query response lifecycle.
         """
@@ -98,7 +89,12 @@ class GeoGuardianOrchestrator:
         
         if cached_res:
             cached_res["cache_hit"] = True
-            cached_res["structured_reasoning"] = ReasoningEngine.process(query, llm_response=cached_res.get("response", ""))
+            cached_res["structured_reasoning"] = ReasoningEngine.process(
+                query,
+                retrieval_context=cached_res.get("retrieval_context"),
+                llm_response=cached_res.get("response", ""),
+                incident=incident
+            )
             if target_lang != "en":
                 cached_res["response"] = self.translator.translate(cached_res["response"], target_lang)
             return cached_res
@@ -187,12 +183,13 @@ class GeoGuardianOrchestrator:
         latency["total_latency_ms"] = total_time_ms
         
         # Get structured reasoning payload
-        reasoning_payload = ReasoningEngine.process(query, retrieval_context=retrieval_res, llm_response=raw_response)
+        reasoning_payload = ReasoningEngine.process(query, retrieval_context=retrieval_res, llm_response=raw_response, incident=incident)
         
         output_res = {
             "response": translated_response,
             "raw_response": raw_response,
             "structured_reasoning": reasoning_payload,
+            "retrieval_context": retrieval_res,
             "explainability": {
                 "confidence": retrieval_res["confidence"],
                 "evidence": retrieval_res["evidence"]

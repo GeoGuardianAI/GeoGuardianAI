@@ -25,133 +25,215 @@ interface MarkerDetailDrawerProps {
 }
 
 export const MarkerDetailDrawer: React.FC<MarkerDetailDrawerProps> = ({
-  marker, onClose, onDispatchDrone, onGenerateReport
+  marker,
+  onClose,
+  onDispatchDrone,
+  onGenerateReport,
 }) => {
-  const isOpen = marker !== null;
+  if (!marker) return null;
+
+  const isCritical =
+    marker.status.toLowerCase().includes('critical') ||
+    marker.status.toLowerCase().includes('alert');
+  const isWarning = marker.status.toLowerCase().includes('risk');
+
+  const statusBadgeClass = isCritical
+    ? 'm-status-critical'
+    : isWarning
+    ? 'm-status-warning'
+    : 'm-status-safe';
 
   return (
-    <div className={`marker-drawer ${isOpen ? 'open' : ''}`}>
-      {marker && (
-        <>
-          {/* Header */}
-          <div className="marker-drawer-header">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--t3)', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                {marker.type}
+    <>
+      {/* Dimmed backdrop to close on outside click */}
+      <div className="marker-drawer-backdrop" onClick={onClose} />
+
+      {/* Slide-over Right Drawer */}
+      <aside className="marker-drawer-panel" aria-label="Asset Details">
+        {/* Top Header */}
+        <header className="marker-drawer-header">
+          <div className="marker-header-top">
+            <span className="marker-eyebrow">{marker.type}</span>
+            <button
+              className="marker-close-btn"
+              onClick={onClose}
+              title="Close Panel"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="marker-title-row">
+            <span className="marker-main-icon">{marker.icon}</span>
+            <div className="marker-title-info">
+              <h2 className="marker-name">{marker.label}</h2>
+              <p className="marker-coords">
+                📍 {marker.lat.toFixed(4)}°N, {marker.lng.toFixed(4)}°E · Zone A
+              </p>
+            </div>
+          </div>
+        </header>
+
+        {/* Scrollable Content Body */}
+        <div className="marker-drawer-content">
+          {/* Status & Confidence Card */}
+          <section className="marker-section-card marker-metrics-row">
+            <div className="marker-metric-box">
+              <span className="marker-card-label">OPERATIONAL STATUS</span>
+              <div className={`marker-status-pill ${statusBadgeClass}`}>
+                <span className="marker-pulse-dot" />
+                <strong>{marker.status}</strong>
+              </div>
+            </div>
+
+            <div className="marker-metric-box" style={{ textAlign: 'right' }}>
+              <span className="marker-card-label">EVIDENCE CONFIDENCE</span>
+              <div className="marker-confidence-value">
+                {marker.confidence}%
+              </div>
+              <div className="marker-progress-track">
+                <div
+                  className="marker-progress-fill"
+                  style={{
+                    width: `${marker.confidence}%`,
+                    background: isCritical
+                      ? '#dc2626'
+                      : isWarning
+                      ? '#d97706'
+                      : '#16a34a',
+                  }}
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Live Sensor Telemetry (if available) */}
+          {marker.sensorReading && (
+            <section className="marker-section-card marker-telemetry-card">
+              <div className="marker-card-header">
+                <span className="marker-card-icon">📡</span>
+                <span className="marker-card-title">LIVE SENSOR TELEMETRY</span>
+                <span className="marker-live-tag">● LIVE FEED</span>
+              </div>
+
+              <div className="marker-telemetry-body">
+                <div className="marker-telemetry-val">
+                  <span className="telemetry-number">
+                    {marker.sensorReading.value}
+                  </span>
+                  <span className="telemetry-unit">
+                    {marker.sensorReading.unit}
+                  </span>
+                </div>
+
+                <div
+                  className={`marker-telemetry-trend ${
+                    isCritical
+                      ? 'trend-danger'
+                      : isWarning
+                      ? 'trend-warning'
+                      : 'trend-safe'
+                  }`}
+                >
+                  {marker.sensorReading.trend}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Current State / Situation */}
+          <section className="marker-section-card">
+            <div className="marker-card-header">
+              <span className="marker-card-icon">📋</span>
+              <span className="marker-card-title">CURRENT SITUATION</span>
+            </div>
+            <p className="marker-info-text">{marker.info}</p>
+          </section>
+
+          {/* Connected Roads & Infrastructure */}
+          {marker.roads && marker.roads.length > 0 && (
+            <section className="marker-section-card">
+              <div className="marker-card-header">
+                <span className="marker-card-icon">🛣️</span>
+                <span className="marker-card-title">CONNECTED ROUTES</span>
+              </div>
+
+              <div className="marker-list-group">
+                {marker.roads.map((road, idx) => {
+                  const isClosed =
+                    road.status.includes('CLOSED') ||
+                    road.status.includes('BLOCKED') ||
+                    road.status.includes('FLOODED');
+
+                  return (
+                    <div className="marker-list-item" key={idx}>
+                      <span className="marker-item-name">{road.name}</span>
+                      <span
+                        className={`marker-item-badge ${
+                          isClosed ? 'badge-closed' : 'badge-open'
+                        }`}
+                      >
+                        {road.status}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* Nearby Hospitals & Reachability */}
+          {marker.hospitals && marker.hospitals.length > 0 && (
+            <section className="marker-section-card">
+              <div className="marker-card-header">
+                <span className="marker-card-icon">🏥</span>
+                <span className="marker-card-title">NEARBY MEDICAL CENTERS</span>
+              </div>
+
+              <div className="marker-list-group">
+                {marker.hospitals.map((hosp, idx) => (
+                  <div className="marker-list-item" key={idx}>
+                    <span className="marker-item-name">{hosp.name}</span>
+                    <span className="marker-distance-pill">
+                      {hosp.distance}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* AI Risk Assessment */}
+          <section className="marker-section-card marker-risk-card">
+            <div className="marker-card-header">
+              <span className="marker-card-icon">⚠️</span>
+              <span className="marker-card-title" style={{ color: '#b91c1c' }}>
+                AI RISK ASSESSMENT & MANDATE
               </span>
-              <button className="drawer-close" onClick={onClose}>✕</button>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 22 }}>{marker.icon}</span>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--t1)' }}>{marker.label}</div>
-                <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--t3)', marginTop: 2 }}>
-                  {marker.lat.toFixed(4)}°N, {marker.lng.toFixed(4)}°E
-                </div>
-              </div>
-            </div>
-          </div>
+            <p className="marker-risk-text">{marker.riskParagraph}</p>
+          </section>
+        </div>
 
-          {/* Body */}
-          <div className="marker-drawer-body">
-            {/* Status + Confidence */}
-            <div className="md-section">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <div>
-                  <div className="md-label">STATUS</div>
-                  <div className="status-badge" style={{ background: `${marker.statusColor}18`, borderColor: `${marker.statusColor}40`, color: marker.statusColor, border: '1px solid' }}>
-                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: marker.statusColor, flexShrink: 0 }} />
-                    {marker.status}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="md-label">CONFIDENCE</div>
-                  <div style={{ fontFamily: 'var(--mono)', fontSize: 18, fontWeight: 700, color: marker.statusColor }}>
-                    {marker.confidence}%
-                  </div>
-                </div>
-              </div>
-              <div className="confidence-track">
-                <div className="confidence-fill" style={{ width: `${marker.confidence}%`, background: marker.statusColor }} />
-              </div>
-            </div>
+        {/* Footer Actions */}
+        <footer className="marker-drawer-footer">
+          <button
+            type="button"
+            className="marker-btn-action marker-btn-report"
+            onClick={() => onGenerateReport?.(marker.id)}
+          >
+            📄 Generate Damage Report
+          </button>
 
-            {/* Sensor reading */}
-            {marker.sensorReading && (
-              <div className="md-section">
-                <div className="md-label">LIVE SENSOR READING</div>
-                <div className="sensor-reading">
-                  <span className="sensor-val">{marker.sensorReading.value}</span>
-                  <span className="sensor-unit">{marker.sensorReading.unit}</span>
-                  <span className="sensor-status" style={{ color: marker.statusColor }}>{marker.sensorReading.trend}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Info */}
-            <div className="md-section">
-              <div className="md-label">CURRENT STATE</div>
-              <div style={{ fontSize: 11, color: 'var(--t2)', lineHeight: 1.5 }}>{marker.info}</div>
-            </div>
-
-            {/* Connected roads */}
-            {marker.roads && (
-              <div className="md-section">
-                <div className="md-label">CONNECTED ROADS</div>
-                <div className="roads-list">
-                  {marker.roads.map((r, i) => (
-                    <div key={i} className="road-item">
-                      <div className="road-dot" style={{ background: r.color }} />
-                      <span>{r.name}</span>
-                      <span style={{ marginLeft: 'auto', fontFamily: 'var(--mono)', fontSize: 9, color: r.color }}>{r.status}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Nearby hospitals */}
-            {marker.hospitals && (
-              <div className="md-section">
-                <div className="md-label">NEARBY HOSPITALS</div>
-                <div className="hospitals-list">
-                  {marker.hospitals.map((h, i) => (
-                    <div key={i} className="hosp-item">
-                      <div className="hosp-dot" style={{ background: h.color }} />
-                      <span>{h.name}</span>
-                      <span style={{ marginLeft: 'auto', fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--t3)' }}>{h.distance}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* AI Risk Paragraph */}
-            <div className="md-section">
-              <div className="md-label">AI RISK ASSESSMENT</div>
-              <div style={{
-                fontSize: 10, color: 'var(--t2)', lineHeight: 1.55,
-                background: 'rgba(255,59,48,0.04)',
-                padding: '8px 10px',
-                borderLeft: '2px solid rgba(255,59,48,0.35)',
-                borderRadius: '0 6px 6px 0'
-              }}>
-                {marker.riskParagraph}
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="md-actions">
-              <button className="btn btn-danger" style={{ fontSize: 11 }} onClick={() => onGenerateReport?.(marker.id)}>
-                📋 Generate Damage Report
-              </button>
-              <button className="btn btn-primary" style={{ fontSize: 11 }} onClick={() => onDispatchDrone?.(marker.id)}>
-                🚁 Dispatch Drone to Location
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+          <button
+            type="button"
+            className="marker-btn-action marker-btn-dispatch"
+            onClick={() => onDispatchDrone?.(marker.id)}
+          >
+            🚁 Dispatch Drone to Location
+          </button>
+        </footer>
+      </aside>
+    </>
   );
 };

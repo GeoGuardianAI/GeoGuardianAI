@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { initialIncidentState } from '../data/incidentState';
 
 interface Node {
   id: string;
@@ -19,13 +20,15 @@ interface Edge {
 export const GraphExplorer: React.FC = () => {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
+  const incident = initialIncidentState;
+
   // Hardcode coordinate points for nodes to guarantee a beautiful layout
   const nodes: Node[] = [
     { id: "State:MH", label: "Maharashtra", type: "State", x: 50, y: 70, details: { governor: "MH Government", risk_index: "Moderate" } },
     { id: "Dist:Pune", label: "Pune District", type: "District", x: 130, y: 120, details: { population: "9.4M", area: "15,643 sq km" } },
     { id: "City:Pune_City", label: "Pune City", type: "City", x: 220, y: 170, details: { main_river: "Mutha River", status: "Flood Advisory" } },
     { id: "Disaster:Flood", label: "Mutha Flood", type: "Disaster", x: 340, y: 70, details: { severity: "Severe (Level 4)", triggers: "Heavy Inundation" } },
-    { id: "Sensor:WaterLevel", label: "Mutha Sensor", type: "Sensor", x: 300, y: 220, details: { telemetry: "1.9m water level", status: "Warning Triggered" } },
+    { id: "Sensor:WaterLevel", label: "Mutha Sensor", type: "Sensor", x: 300, y: 220, details: { telemetry: `${incident.riverLevel}m water level`, status: "Warning Triggered" } },
     { id: "Hospital:Sassoon", label: "Sassoon Hospital", type: "Hospital", x: 140, y: 240, status: "Active", details: { capacity: "Normal (78% occupied)", medical_kits: "Available" } },
     { id: "Hospital:Noble", label: "Noble Hospital", type: "Hospital", x: 230, y: 270, status: "At Risk", details: { capacity: "Strained (92% occupied)", evacuation_needed: "Partial" } },
     { id: "Bridge:Sangam", label: "Sangam Bridge", type: "Bridge", x: 420, y: 180, status: "Blocked", details: { damage: "Severe structural crack", closed_by: "Pune Police" } },

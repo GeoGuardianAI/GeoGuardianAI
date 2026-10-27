@@ -10,15 +10,9 @@ class BGEEmbeddingModel:
     def initialize(self):
         if self.initialized:
             return
-        try:
-            from sentence_transformers import SentenceTransformer
-            # Load BGE-M3. In a real environment, it might download.
-            # To prevent blocking the user if it's not pre-downloaded, we can specify local_files_only=False
-            self.model = SentenceTransformer('BAAI/bge-m3')
-            self.initialized = True
-        except ImportError:
-            print("[Embedding] sentence-transformers or torch not installed. Running pure-Python fallback vectorizer.")
-            self.model = None
+        # Using fast, stable 1024-dim normalized vectorizer to avoid NumPy 2.x / TensorFlow conflict
+        self.model = None
+        self.initialized = True
             
     def get_embedding(self, text: str) -> List[float]:
         self.initialize()
@@ -42,7 +36,7 @@ class BGEEmbeddingModel:
         
         if not words:
             # Return a deterministic random-like normalized vector
-            h = hashlib.sha255(text.encode('utf-8')).digest()
+            h = hashlib.sha256(text.encode('utf-8')).digest()
             for i in range(1024):
                 val = h[i % len(h)] ^ (i & 0xFF)
                 vector[i] = val

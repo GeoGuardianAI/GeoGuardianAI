@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { initialIncidentState } from '../data/incidentState';
 
 interface Notification {
   id: number;
@@ -26,12 +27,32 @@ const LIVE: Notification[] = [
 const nowStr = () => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
 export const NotificationCenter: React.FC = () => {
-  const [notifs, setNotifs] = useState<Notification[]>(SEED);
+  const incident = initialIncidentState;
+
+  const seedNotifications = SEED.map(notification =>
+    notification.id === 2
+      ? {
+          ...notification,
+          text: `Mutha sensor: ${incident.riverLevel}m — threshold breached`
+        }
+      : notification
+  );
+
+  const liveNotifications = LIVE.map(notification =>
+    notification.text.startsWith('AI updated risk score:')
+      ? {
+          ...notification,
+          text: `AI updated risk score: ${incident.riskScore}/100`
+        }
+      : notification
+  );
+
+  const [notifs, setNotifs] = useState<Notification[]>(seedNotifications);
   const liveIdx = React.useRef(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const base = LIVE[liveIdx.current % LIVE.length];
+      const base = liveNotifications[liveIdx.current % liveNotifications.length];
       const notif: Notification = { ...base, id: Date.now(), time: nowStr() };
       setNotifs(prev => [notif, ...prev].slice(0, 12));
       liveIdx.current++;

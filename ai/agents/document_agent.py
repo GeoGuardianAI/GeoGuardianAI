@@ -27,7 +27,7 @@ class DocumentAgent:
                 
         if "water" in text_lower or "threshold" in text_lower:
             import re
-            threshold_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:m|meter|feet|ft)\b', text_lower)
+            threshold_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:meters?|metres?|feet|ft|m)\b', text_lower)
             if threshold_match:
                 results["warning_threshold"] = threshold_match.group(0) + " water level"
                 

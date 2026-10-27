@@ -1,126 +1,8 @@
 import React, { useState } from 'react';
+import { initialIncidentState, type IncidentState } from '../data/incidentState';
 import { DocumentCitationDrawer, type CitationData } from './DocumentCitationDrawer';
 
 // ─── Data ─────────────────────────────────────────────────────────────
-
-const CRITICAL_FACTORS = [
-  {
-    icon: '🌊',
-    label: 'River Level',
-    value: '1.90 m',
-    detail: '+0.10 m above 1.80 m warning threshold',
-    impact: 'HIGH IMPACT',
-    impactColor: '#DC2626',
-    impactBg: '#FEF2F2',
-  },
-  {
-    icon: '👥',
-    label: 'Population Exposure',
-    value: '22,400',
-    detail: 'Affected Zone A requires evacuation planning',
-    impact: 'HIGH IMPACT',
-    impactColor: '#DC2626',
-    impactBg: '#FEF2F2',
-  },
-  {
-    icon: '🌉',
-    label: 'Infrastructure',
-    value: 'Sangam Bridge',
-    detail: 'Structural crack of 4.8 cm detected by drone',
-    impact: 'MED-HIGH IMPACT',
-    impactColor: '#D97706',
-    impactBg: '#FFFBEB',
-  },
-  {
-    icon: '🏥',
-    label: 'Hospital Capacity',
-    value: '41 beds',
-    detail: 'Emergency surge capacity remains limited at Sassoon General',
-    impact: 'MEDIUM IMPACT',
-    impactColor: '#D97706',
-    impactBg: '#FFFBEB',
-  },
-];
-
-const EVIDENCE_ITEMS: {
-  type: 'DOCUMENT' | 'SENSOR' | 'DRONE';
-  icon: string;
-  title: string;
-  subtitle: string;
-  lines: { label: string; value: string; highlight?: boolean }[];
-  score?: number;
-  live?: boolean;
-  citation?: CitationData;
-}[] = [
-  {
-    type: 'DOCUMENT',
-    icon: '📄',
-    title: 'Flood Response SOP',
-    subtitle: 'Rule 4.2 · Page 7',
-    lines: [
-      { label: 'Source', value: 'NDMA Official SOP 2026' },
-      { label: 'Relevance', value: '96% match' },
-    ],
-    score: 96,
-    citation: {
-      document: 'Flood Response SOP 2026',
-      rule: 'Rule 4.2',
-      page: 7,
-      section: 'Hospital Surge Capacity & Evacuation Trigger',
-      text: 'All hospitals must prepare emergency beds equivalent to 40% of total capacity during flood events. When river water exceeds 1.8 metres, immediate evacuation of low-lying Zone A must begin.',
-      highlight: 'When river water exceeds 1.8 metres, immediate evacuation of low-lying Zone A must begin.',
-      score: 96,
-      retrievedBecause: 'River level = 1.90 m, which exceeds the 1.8 m threshold defined in Rule 4.2.',
-      sourceType: 'Official NDMA SOP',
-    },
-  },
-  {
-    type: 'DOCUMENT',
-    icon: '📄',
-    title: 'Disaster Equipment Manual',
-    subtitle: 'Section 2.1 · Page 12',
-    lines: [
-      { label: 'Source', value: 'NDMA Equipment Guidelines' },
-      { label: 'Relevance', value: '91% match' },
-    ],
-    score: 91,
-    citation: {
-      document: 'Disaster Equipment Manual',
-      rule: 'Section 2.1',
-      page: 12,
-      section: 'Rescue Boat Deployment',
-      text: 'Deploy at least 5 rescue boats per affected district and provide life jackets for all response personnel during Level 4 flood alerts.',
-      highlight: 'Deploy at least 5 rescue boats per affected district',
-      score: 91,
-      retrievedBecause: 'Level 4 flood alert active in Pune District.',
-      sourceType: 'Official Equipment Manual',
-    },
-  },
-  {
-    type: 'SENSOR',
-    icon: '📡',
-    title: 'Mutha River Sensor',
-    subtitle: 'Real-time telemetry · Live',
-    lines: [
-      { label: 'Current level', value: '1.90 m', highlight: true },
-      { label: 'Warning threshold', value: '1.80 m' },
-      { label: 'Overflow', value: '+0.10 m above limit', highlight: true },
-      { label: 'Timestamp', value: '12:15 IST' },
-    ],
-    live: true,
-  },
-  {
-    type: 'DRONE',
-    icon: '🚁',
-    title: 'Drone Observation — Alpha-1',
-    subtitle: 'Sangam Bridge · 12:08 IST',
-    lines: [
-      { label: 'Finding', value: 'Structural crack detected', highlight: true },
-      { label: 'Crack width', value: '4.8 cm' },
-      { label: 'Access status', value: 'RESTRICTED', highlight: true },
-    ],
-  },
-];
 
 const REASONING_STEPS = [
   { name: 'Planner', desc: 'Identified flood response objective for Pune District' },
@@ -149,12 +31,144 @@ const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 interface ExplainabilityDashboardProps {
   onViewMap?: () => void;
+  incident?: IncidentState;
 }
 
-export const ExplainabilityDashboard: React.FC<ExplainabilityDashboardProps> = ({ onViewMap }) => {
+export const ExplainabilityDashboard: React.FC<ExplainabilityDashboardProps> = ({ onViewMap, incident = initialIncidentState }) => {
   const [openCitation, setOpenCitation] = useState<CitationData | null>(null);
   const [techOpen, setTechOpen] = useState(false);
   const [kgOpen, setKgOpen] = useState(false);
+
+  const bridge = incident.infrastructure.find(
+    item => item.type === 'Bridge'
+  );
+
+  const riverSensor = incident.sensors.find(
+    sensor => sensor.type === 'Water Level'
+  );
+
+  const hospital = incident.hospitals[0];
+
+  const riverExcess = incident.riverLevel - incident.criticalRiverLevel;
+
+  const CRITICAL_FACTORS = [
+    {
+      icon: '🌊',
+      label: 'River Level',
+      value: `${riverSensor?.value ?? 0} ${riverSensor?.unit ?? ''}`,
+      detail: `Critical threshold: ${riverSensor?.criticalValue ?? 0} ${riverSensor?.unit ?? ''}`,
+      impact: 'HIGH IMPACT',
+      impactColor: '#DC2626',
+      impactBg: '#FEF2F2',
+    },
+    {
+      icon: '👥',
+      label: 'Population Exposure',
+      value: incident.populationAtRisk.toLocaleString('en-US'),
+      detail: 'Affected Zone A requires evacuation planning',
+      impact: 'HIGH IMPACT',
+      impactColor: '#DC2626',
+      impactBg: '#FEF2F2',
+    },
+    {
+      icon: '🌉',
+      label: 'Infrastructure',
+      value: bridge?.name ?? 'Unknown bridge',
+      detail: bridge?.description ?? 'No infrastructure information available.',
+      impact: 'MED-HIGH IMPACT',
+      impactColor: '#D97706',
+      impactBg: '#FFFBEB',
+    },
+    {
+      icon: '🏥',
+      label: 'Hospital Capacity',
+      value: `${hospital.availableBeds} beds`,
+      detail: `${hospital.name} — emergency capacity status: ${hospital.status}`,
+      impact: 'MEDIUM IMPACT',
+      impactColor: '#D97706',
+      impactBg: '#FFFBEB',
+    },
+  ];
+
+  const EVIDENCE_ITEMS: {
+    type: 'DOCUMENT' | 'SENSOR' | 'DRONE';
+    icon: string;
+    title: string;
+    subtitle: string;
+    lines: { label: string; value: string; highlight?: boolean }[];
+    score?: number;
+    live?: boolean;
+    citation?: CitationData;
+  }[] = [
+    {
+      type: 'DOCUMENT',
+      icon: '📄',
+      title: 'Flood Response SOP',
+      subtitle: 'Rule 4.2 · Page 7',
+      lines: [
+        { label: 'Source', value: 'NDMA Official SOP 2026' },
+        { label: 'Relevance', value: '96% match' },
+      ],
+      score: 96,
+      citation: {
+        document: 'Flood Response SOP 2026',
+        rule: 'Rule 4.2',
+        page: 7,
+        section: 'Hospital Surge Capacity & Evacuation Trigger',
+        text: 'All hospitals must prepare emergency beds equivalent to 40% of total capacity during flood events. When river water exceeds 1.8 metres, immediate evacuation of low-lying Zone A must begin.',
+        highlight: 'When river water exceeds 1.8 metres, immediate evacuation of low-lying Zone A must begin.',
+        score: 96,
+        retrievedBecause: 'River level = 1.90 m, which exceeds the 1.8 m threshold defined in Rule 4.2.',
+        sourceType: 'Official NDMA SOP',
+      },
+    },
+    {
+      type: 'DOCUMENT',
+      icon: '📄',
+      title: 'Disaster Equipment Manual',
+      subtitle: 'Section 2.1 · Page 12',
+      lines: [
+        { label: 'Source', value: 'NDMA Equipment Guidelines' },
+        { label: 'Relevance', value: '91% match' },
+      ],
+      score: 91,
+      citation: {
+        document: 'Disaster Equipment Manual',
+        rule: 'Section 2.1',
+        page: 12,
+        section: 'Rescue Boat Deployment',
+        text: 'Deploy at least 5 rescue boats per affected district and provide life jackets for all response personnel during Level 4 flood alerts.',
+        highlight: 'Deploy at least 5 rescue boats per affected district',
+        score: 91,
+        retrievedBecause: 'Level 4 flood alert active in Pune District.',
+        sourceType: 'Official Equipment Manual',
+      },
+    },
+    {
+      type: 'SENSOR',
+      icon: '📡',
+      title: riverSensor?.name ?? 'River Sensor',
+      subtitle: 'Real-time telemetry · Live',
+      lines: [
+        { label: 'Current level', value: `${riverSensor?.value ?? 0} ${riverSensor?.unit ?? ''}`, highlight: true },
+        { label: 'Warning threshold', value: `${riverSensor?.criticalValue ?? 0} ${riverSensor?.unit ?? ''}` },
+        { label: 'Overflow', value: `${riverExcess.toFixed(2)} ${riverSensor?.unit ?? ''} above limit`, highlight: true },
+        { label: 'Timestamp', value: '12:15 IST' },
+      ],
+      live: true,
+    },
+    {
+      type: 'DRONE',
+      icon: '🚁',
+      title: 'Drone Observation — Alpha-1',
+      subtitle: `${bridge?.name ?? 'Bridge'} · ${incident.location}`,
+      lines: [
+        { label: 'Finding', value: 'Structural crack detected', highlight: true },
+        { label: 'Crack width', value: bridge?.sensorReading ? `${bridge.sensorReading.value} ${bridge.sensorReading.unit}` : 'Unavailable', highlight: true },
+        { label: 'Access status', value: 'RESTRICTED', highlight: true },
+      ],
+    },
+  ];
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto' }}>
@@ -178,11 +192,11 @@ export const ExplainabilityDashboard: React.FC<ExplainabilityDashboardProps> = (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
             <span className="badge badge-critical">CRITICAL</span>
             <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-              INC-2026-PUNE-01
+              {incident.incidentId}
             </span>
           </div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-main)', marginBottom: 4 }}>
-            Pune District Flood Emergency
+            {incident.location} District {incident.disasterType} Emergency
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
             Immediate response recommended · Active since 21:00 IST
@@ -194,7 +208,7 @@ export const ExplainabilityDashboard: React.FC<ExplainabilityDashboardProps> = (
             <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: 4 }}>
               Risk Score
             </div>
-            <div style={{ fontSize: 30, fontWeight: 800, color: '#DC2626', lineHeight: 1 }}>87</div>
+            <div style={{ fontSize: 30, fontWeight: 800, color: '#DC2626', lineHeight: 1 }}>{incident.riskScore}</div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>/100</div>
           </div>
           <div style={{ width: 1, background: 'var(--border)' }} />
@@ -202,7 +216,7 @@ export const ExplainabilityDashboard: React.FC<ExplainabilityDashboardProps> = (
             <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: 4 }}>
               Evidence Confidence
             </div>
-            <div style={{ fontSize: 30, fontWeight: 800, color: '#16A34A', lineHeight: 1 }}>96%</div>
+            <div style={{ fontSize: 30, fontWeight: 800, color: '#16A34A', lineHeight: 1 }}>{incident.groundedScore}%</div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Grounded</div>
           </div>
         </div>
@@ -364,17 +378,18 @@ export const ExplainabilityDashboard: React.FC<ExplainabilityDashboardProps> = (
                 Recommendation 01 · Priority Critical
               </div>
               <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-main)' }}>
-                Deploy 5 rescue boats to Zone A
+                Deploy {incident.assets.rescueBoats.required} rescue boats to Zone A
               </div>
             </div>
-            <span className="badge badge-critical">94% CONFIDENCE</span>
+            <span className="badge badge-critical">{incident.aiAssessment.confidence}% CONFIDENCE</span>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
             <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 6, padding: '10px 14px', border: '1px solid #BFDBFE' }}>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 4 }}>Why</div>
               <div style={{ fontSize: 13, color: 'var(--text-main)', lineHeight: 1.4 }}>
-                River level is 0.10 m above the critical threshold and Zone A is under evacuation planning.
+                River level is{' '}
+                {riverExcess.toFixed(2)} m above the critical threshold and the incident requires immediate response.
               </div>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 6, padding: '10px 14px', border: '1px solid #BFDBFE' }}>
@@ -458,11 +473,11 @@ export const ExplainabilityDashboard: React.FC<ExplainabilityDashboardProps> = (
           </div>
           {kgOpen && (
             <div style={{ marginTop: 14, padding: 14, background: 'var(--bg-subtle)', borderRadius: 6, fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-              <div><strong style={{ color: 'var(--text-main)' }}>Flood</strong> conditions triggered when Mutha River exceeded 1.8 m threshold.</div>
-              <div><strong style={{ color: 'var(--text-main)' }}>River Level</strong> sensor reporting 1.90 m as of 12:15 IST.</div>
-              <div><strong style={{ color: 'var(--text-main)' }}>Evacuation Zone</strong> A contains 22,400 residents, per district GIS data.</div>
-              <div><strong style={{ color: 'var(--text-main)' }}>Rescue Boats</strong> required: 5 units per SOP Section 2.1.</div>
-              <div><strong style={{ color: 'var(--text-main)' }}>Shelter</strong> capacity at District Hall: 2,400 people available.</div>
+              <div><strong style={{ color: 'var(--text-main)' }}>Flood</strong> conditions triggered when {riverSensor?.name ?? 'Mutha River'} exceeded {incident.criticalRiverLevel} m threshold.</div>
+              <div><strong style={{ color: 'var(--text-main)' }}>River Level</strong> sensor reporting {incident.riverLevel.toFixed(2)} m.</div>
+              <div><strong style={{ color: 'var(--text-main)' }}>Evacuation Zone</strong> contains {incident.populationAtRisk.toLocaleString()} residents, per district GIS data.</div>
+              <div><strong style={{ color: 'var(--text-main)' }}>Rescue Boats</strong> required: {incident.assets.rescueBoats.required} units per disaster response SOP.</div>
+              <div><strong style={{ color: 'var(--text-main)' }}>Shelter</strong> capacity at Sports Complex Shelter available.</div>
             </div>
           )}
           <button

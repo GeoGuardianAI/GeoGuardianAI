@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import numpy as np
 from typing import List, Dict, Any, Optional
@@ -102,6 +103,31 @@ class QdrantVectorDB:
             except Exception:
                 pass
 
+    def delete_by_prefix(self, prefix: str) -> int:
+        """
+        Removes every stored chunk whose id starts with `prefix` (a source
+        filename), so re-indexing a new version of a document leaves no stale
+        chunks behind. Returns the number of chunks removed.
+        """
+        removed = [d for d in self.documents if d["id"].startswith(prefix)]
+        if not removed:
+            return 0
+        self.documents = [d for d in self.documents if not d["id"].startswith(prefix)]
+        self.save_local_db()
+        self.initialize_qdrant()
+        if self.client:
+            try:
+                import uuid
+                from qdrant_client.models import PointIdsList
+                ids = [str(uuid.uuid5(uuid.NAMESPACE_DNS, d["id"])) for d in removed]
+                self.client.delete(
+                    collection_name="disaster_sops",
+                    points_selector=PointIdsList(points=ids),
+                )
+            except Exception as e:
+                print(f"[VectorDB] Qdrant delete failed: {e}")
+        return len(removed)
+
     def cosine_similarity(self, v1: List[float], v2: List[float]) -> float:
         a = np.array(v1)
         b = np.array(v2)
@@ -111,22 +137,50 @@ class QdrantVectorDB:
             return 0.0
         return float(np.dot(a, b) / (norm_a * norm_b))
 
+    _STOP_WORDS = {
+        "what", "does", "say", "about", "and", "the", "in", "of", "to", "a", 
+        "an", "is", "for", "on", "with", "as", "by", "from", "at", "it", "this",
+        "that", "are", "be", "or", "which"
+    }
+
+    @staticmethod
+    def _clean_token(w: str) -> str:
+        return re.sub(r'[^a-z0-9]', '', w.lower())
+
+    @staticmethod
+    def _stem_token(w: str) -> str:
+        clean = re.sub(r'[^a-z0-9]', '', w.lower())
+        for suffix in ("ies", "es", "s", "ing", "ed"):
+            if clean.endswith(suffix) and len(clean) > len(suffix) + 2:
+                return clean[:-len(suffix)]
+        return clean
+
     def sparse_score(self, query: str, document_text: str) -> float:
         """
-        Simple BM25-like keyword matching score for sparse search.
+        BM25-style keyword matching score with punctuation stripping and stemming.
         """
-        query_words = set(query.lower().split())
-        doc_words = document_text.lower().split()
-        if not query_words or not doc_words:
+        raw_q_words = [self._clean_token(w) for w in query.split()]
+        q_words = [w for w in raw_q_words if w and w not in self._STOP_WORDS]
+        if not q_words:
+            q_words = [w for w in raw_q_words if w]
+        if not q_words:
             return 0.0
-            
+
+        q_stems = [self._stem_token(w) for w in q_words]
+        doc_raw = [self._clean_token(w) for w in document_text.split()]
+        doc_words = [w for w in doc_raw if w]
+        if not doc_words:
+            return 0.0
+        doc_stems = [self._stem_token(w) for w in doc_words]
+        doc_text_clean = " ".join(doc_words)
+
         score = 0.0
-        for word in query_words:
-            # Term Frequency in doc
-            tf = doc_words.count(word)
+        for qw, qs in zip(q_words, q_stems):
+            tf = doc_words.count(qw) + doc_stems.count(qs)
+            if tf == 0 and (qw in doc_text_clean or qs in doc_text_clean):
+                tf = 1
             if tf > 0:
-                # Add word length and frequency scaling
-                score += (tf / (tf + 1.5)) * 1.5
+                score += (tf / (tf + 1.2)) * 1.5
         return score
 
     def search(self, 

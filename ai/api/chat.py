@@ -18,6 +18,7 @@ class ChatRequest(BaseModel):
     filters: Optional[Dict[str, Any]] = None  # state, district, disaster_type
     target_lang: Optional[str] = "en"
     model_choice: Optional[str] = "Llama-3 (Local)"
+    incident: Optional[Dict[str, Any]] = None
 
 class AskAIRequest(BaseModel):
     query: str
@@ -54,7 +55,8 @@ async def chat_endpoint(req: ChatRequest):
             search_mode=req.search_mode,
             filters=req.filters,
             target_lang=req.target_lang,
-            model_choice=req.model_choice
+            model_choice=req.model_choice,
+            incident=req.incident
         )
         return result
     except Exception as e:

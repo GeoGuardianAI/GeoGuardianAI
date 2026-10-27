@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import time
 from typing import Dict, Any, Optional
@@ -23,7 +24,7 @@ class QueryCache:
         if entry:
             # Check expiration (e.g. 5 minutes cache life)
             if time.time() < entry["expires_at"]:
-                return entry["data"]
+                return copy.deepcopy(entry["data"])
             else:
                 # Remove expired
                 del self.cache[h]
@@ -32,6 +33,6 @@ class QueryCache:
     def set(self, query: str, mode: str, data: Dict[str, Any], ttl_seconds: int = 300, filters: Dict[str, Any] = None):
         h = self._get_hash(query, mode, filters)
         self.cache[h] = {
-            "data": data,
+            "data": copy.deepcopy(data),
             "expires_at": time.time() + ttl_seconds
         }

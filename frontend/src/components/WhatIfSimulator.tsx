@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { initialIncidentState, type IncidentState } from '../data/incidentState';
 
 interface WhatIfResult {
   active: boolean;
@@ -12,6 +13,7 @@ interface WhatIfResult {
 
 interface WhatIfSimulatorProps {
   onSimulate: (result: WhatIfResult) => void;
+  incident?: IncidentState;
 }
 
 const HORIZONS = ['1h', '2h', '4h', '6h'] as const;
@@ -35,10 +37,10 @@ function compute(
   return { active: true, rainfall, riverLevel: projectedLevel, bridgeFail, evacuees, boats, hoursUntil: hFactor };
 }
 
-function getSeverity(evacuees: number) {
-  if (evacuees > 20000) return { label: 'CATASTROPHIC', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' };
-  if (evacuees > 10000) return { label: 'SEVERE',       color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' };
-  if (evacuees > 5000)  return { label: 'MODERATE',     color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' };
+function getSeverity(evacuees: number, projectedLevel: number) {
+  if (evacuees > 20000 || projectedLevel > 2.5) return { label: 'CATASTROPHIC', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' };
+  if (evacuees > 10000 || projectedLevel > 2.0) return { label: 'SEVERE',       color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' };
+  if (evacuees > 5000  || projectedLevel > 1.8) return { label: 'MODERATE',     color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' };
   return { label: 'MANAGEABLE', color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' };
 }
 
@@ -85,14 +87,16 @@ const SliderRow: React.FC<SliderRowProps> = ({ icon, label, unit, value, min, ma
   </div>
 );
 
-export const WhatIfSimulator: React.FC<WhatIfSimulatorProps> = ({ onSimulate }) => {
+export const WhatIfSimulator: React.FC<WhatIfSimulatorProps> = ({ onSimulate, incident = initialIncidentState }) => {
   const [rainfall, setRainfall] = useState(60);
-  const [river,    setRiver]    = useState(1.9);
+  const [river,    setRiver]    = useState(incident.riverLevel);
   const [wind,     setWind]     = useState(35);
   const [density,  setDensity]  = useState<string>('Medium');
   const [horizon,  setHorizon]  = useState<string>('2h');
   const [result,   setResult]   = useState<WhatIfResult | null>(null);
   const [running,  setRunning]  = useState(false);
+
+  const bridge = incident.infrastructure.find(item => item.type === 'Bridge');
 
   const handleRun = () => {
     setRunning(true);
@@ -101,7 +105,7 @@ export const WhatIfSimulator: React.FC<WhatIfSimulatorProps> = ({ onSimulate }) 
       setResult(r);
       onSimulate(r);
       setRunning(false);
-    }, 900);
+    }, 600);
   };
 
   const handleClear = () => {
@@ -109,7 +113,21 @@ export const WhatIfSimulator: React.FC<WhatIfSimulatorProps> = ({ onSimulate }) 
     onSimulate({ active: false } as WhatIfResult);
   };
 
-  const sev = result ? getSeverity(result.evacuees) : null;
+  const sev = result ? getSeverity(result.evacuees, result.riverLevel) : null;
+  const projectedRiskScore = result
+    ? Math.min(
+        99,
+        Math.max(
+          20,
+          Math.round(
+            (result.riverLevel / 3.0) * 45 +
+              (rainfall / 120) * 35 +
+              (result.bridgeFail ? 15 : 0) +
+              (result.evacuees / 35000) * 10
+          )
+        )
+      )
+    : 0;
 
   return (
     <div>
@@ -197,12 +215,42 @@ export const WhatIfSimulator: React.FC<WhatIfSimulatorProps> = ({ onSimulate }) 
           </div>
 
           {[
-            { label: 'River Level', value: '1.9 m', sub: 'Warning limit: 1.8 m', color: '#DC2626' },
-            { label: 'Rainfall Rate', value: '40 mm/hr', sub: 'Heavy rain forecast (3h)', color: '#D97706' },
-            { label: 'Population at Risk', value: '22,400', sub: 'Zone A sub-districts', color: '#D97706' },
-            { label: 'Rescue Boats Deployed', value: '8 units', sub: '40% capacity available', color: '#16A34A' },
-            { label: 'Hospital Capacity', value: '41 beds', sub: 'Sassoon General (free beds)', color: '#16A34A' },
-            { label: 'Bridge Status', value: 'CLOSED', sub: 'Sangam Bridge — cracking detected', color: '#DC2626' },
+            {
+              label: 'River Level',
+              value: `${incident.riverLevel} m`,
+              sub: `Warning limit: ${incident.criticalRiverLevel} m`,
+              color: '#DC2626'
+            },
+            {
+              label: 'Rainfall Rate',
+              value: `${incident.rainfall} mm/hr`,
+              sub: 'Current incident rainfall',
+              color: '#D97706'
+            },
+            {
+              label: 'Population at Risk',
+              value: incident.populationAtRisk.toLocaleString(),
+              sub: 'Current affected population',
+              color: '#D97706'
+            },
+            {
+              label: 'Rescue Boats',
+              value: `${incident.assets.rescueBoats.required} required`,
+              sub: `${incident.assets.rescueBoats.available} available`,
+              color: '#16A34A'
+            },
+            {
+              label: 'Hospital Capacity',
+              value: `${incident.hospitals[0].availableBeds} beds`,
+              sub: `${incident.hospitals[0].name} (available)`,
+              color: '#16A34A'
+            },
+            {
+              label: 'Bridge Status',
+              value: bridge?.status ?? 'UNKNOWN',
+              sub: `${bridge?.name ?? 'Bridge'} — infrastructure status`,
+              color: '#DC2626'
+            },
           ].map((item, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: i < 5 ? '1px solid var(--border)' : 'none' }}>
               <div>
@@ -245,10 +293,10 @@ export const WhatIfSimulator: React.FC<WhatIfSimulatorProps> = ({ onSimulate }) 
                 Current State
               </div>
               {[
-                ['Risk Score', '87 / 100'],
-                ['River Level', '1.9 m'],
-                ['Population at Risk', '22,400'],
-                ['Rescue Boats', '2 units'],
+                ['Risk Score', `${incident.riskScore} / 100`],
+                ['River Level', `${incident.riverLevel} m`],
+                ['Population at Risk', incident.populationAtRisk.toLocaleString()],
+                ['Rescue Boats', `${incident.assets.rescueBoats.available} units`],
               ].map(([k, v]) => (
                 <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
                   <span style={{ color: 'var(--text-muted)' }}>{k}</span>
@@ -262,7 +310,7 @@ export const WhatIfSimulator: React.FC<WhatIfSimulatorProps> = ({ onSimulate }) 
                 After +{horizon} Simulation
               </div>
               {[
-                ['Risk Score', `94 / 100 (${sev.label})`, sev.color],
+                ['Risk Score', `${projectedRiskScore} / 100 (${sev.label})`, sev.color],
                 ['River Level', `${result.riverLevel.toFixed(2)} m`, result.riverLevel > 2.5 ? '#DC2626' : '#D97706'],
                 ['Population at Risk', result.evacuees.toLocaleString(), '#D97706'],
                 ['Rescue Boats Needed', `${result.boats} units`, '#2563EB'],
@@ -281,9 +329,12 @@ export const WhatIfSimulator: React.FC<WhatIfSimulatorProps> = ({ onSimulate }) 
               Why did risk increase?
             </div>
             <ol style={{ paddingLeft: 18, fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.7, margin: '0 0 10px' }}>
-              <li>River level projected to rise by +{(result.riverLevel - 1.9).toFixed(2)}m above current 1.9m.</li>
+              <li>
+                River level projected to rise by +
+                {(result.riverLevel - incident.riverLevel).toFixed(2)}m above current {incident.riverLevel}m.
+              </li>
               <li>Rainfall intensity of {rainfall} mm/hr accelerates run-off into Zone A flood plain.</li>
-              {result.bridgeFail && <li>Sangam Bridge at risk of closure — escape corridors reduced to 1.</li>}
+              {result.bridgeFail && <li>{bridge?.name ?? 'Sangam Bridge'} at risk of closure — escape corridors reduced to 1.</li>}
             </ol>
             <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 4, padding: '8px 12px', fontSize: 12, color: '#92400E' }}>
               <strong>Evidence:</strong> Flood Response SOP — Rule 4.2 · Rule 2.1 · NDMA Guidelines Section 6

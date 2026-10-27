@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { initialIncidentState } from '../data/incidentState';
 
 interface TimelineEvent {
   id: number;
@@ -36,7 +37,16 @@ const getColor = (type: TimelineEvent['type']) => ({
 const tickTime = () => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
 export const IncidentTimeline: React.FC = () => {
-  const [events, setEvents] = useState<TimelineEvent[]>(SEED_EVENTS);
+  const incident = initialIncidentState;
+  const seedEvents = SEED_EVENTS.map(event =>
+    event.id === 1
+      ? {
+          ...event,
+          detail: `Mutha gauge: ${incident.riverLevel}m (limit: ${incident.criticalRiverLevel}m)`
+        }
+      : event
+  );
+  const [events, setEvents] = useState<TimelineEvent[]>(seedEvents);
   const listRef = useRef<HTMLDivElement>(null);
   const liveIdx = useRef(0);
 

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { initialIncidentState, type IncidentState } from '../data/incidentState';
 
 // ─── Types ───────────────────────────────────────────────────────────
 interface Evidence {
@@ -122,6 +123,17 @@ const StructuredCard: React.FC<{ msg: Message; onApprove: (r: MissionRec) => voi
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 640 }}>
 
+      {/* Primary Synthesized Assistant Response */}
+      {msg.content && (
+        <div style={{
+          background: '#FFF', border: '1px solid var(--border)',
+          borderRadius: 6, padding: '14px 18px', fontSize: 13,
+          lineHeight: 1.6, color: 'var(--text-main)', whiteSpace: 'pre-wrap'
+        }}>
+          {msg.content}
+        </div>
+      )}
+
       {/* Decision Header */}
       <div style={{
         background: isRed ? '#FEF2F2' : '#FFFBEB',
@@ -199,8 +211,8 @@ const StructuredCard: React.FC<{ msg: Message; onApprove: (r: MissionRec) => voi
         ))}
       </div>
 
-      {/* Recommendation Action */}
-      {sr.recommendations.length > 0 && (
+      {/* Recommendation Action - Only for operational response directives, never for informational inquiries */}
+      {sr.recommendations.length > 0 && sr.severity.toLowerCase() !== 'informational' && (
         <div style={{
           background: '#EFF6FF', border: '1px solid #BFDBFE',
           borderRadius: 6, padding: '12px 16px',
@@ -250,9 +262,10 @@ const PIPELINE_STEPS = [
 // ─── Main Component ──────────────────────────────────────────────────
 interface TacticalCopilotProps {
   onMissionCreated?: (mission: { id: string; rec: string; commander: string; timestamp: string }) => void;
+  incident?: IncidentState;
 }
 
-export const TacticalCopilot: React.FC<TacticalCopilotProps> = ({ onMissionCreated }) => {
+export const TacticalCopilot: React.FC<TacticalCopilotProps> = ({ onMissionCreated, incident = initialIncidentState }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [query, setQuery] = useState('');
   const [thinking, setThinking] = useState(false);
@@ -269,21 +282,37 @@ export const TacticalCopilot: React.FC<TacticalCopilotProps> = ({ onMissionCreat
     setThinking(true);
     setPipelineStep(0);
 
-    // Animate pipeline steps
-    for (let i = 0; i < PIPELINE_STEPS.length; i++) {
-      setPipelineStep(i);
-      await new Promise(r => setTimeout(r, 350 + Math.random() * 150));
-    }
-
-    setThinking(false);
-    setPipelineStep(-1);
-
     try {
-      const res = await fetch('http://127.0.0.1:8000/chat', {
+      const incidentPayload = incident ? {
+        location: incident.location,
+        disaster: incident.disasterType,
+        river_level: incident.riverLevel,
+        critical_level: incident.criticalRiverLevel,
+        rainfall: incident.rainfall,
+        population_at_risk: incident.populationAtRisk,
+        risk_score: incident.riskScore,
+        hospitals: incident.hospitals,
+        infrastructure: incident.infrastructure,
+        assets: incident.assets
+      } : undefined;
+
+      const fetchPromise = fetch('http://127.0.0.1:8000/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: userQuery, search_mode: 'hybrid' })
+        body: JSON.stringify({
+          query: userQuery,
+          search_mode: 'hybrid',
+          incident: incidentPayload
+        })
       });
+
+      // Animate pipeline steps smoothly while awaiting the real AI response
+      for (let i = 0; i < PIPELINE_STEPS.length; i++) {
+        setPipelineStep(i);
+        await new Promise(r => setTimeout(r, 220));
+      }
+
+      const res = await fetchPromise;
       const data = await res.json();
 
       setMessages(prev => [...prev, {
@@ -299,6 +328,9 @@ export const TacticalCopilot: React.FC<TacticalCopilotProps> = ({ onMissionCreat
         content: 'Unable to connect to backend. Please ensure the server is running on port 8000.',
         timestamp: now(),
       }]);
+    } finally {
+      setThinking(false);
+      setPipelineStep(-1);
     }
   };
 
@@ -329,12 +361,15 @@ export const TacticalCopilot: React.FC<TacticalCopilotProps> = ({ onMissionCreat
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <span style={{ fontWeight: 700, fontSize: 13, color: '#DC2626' }}>
-            🚨 Active Incident — Pune District Flood Emergency
+            🚨 Active Incident — {incident.location} District {incident.disasterType} Emergency
           </span>
           <span className="badge badge-critical">LEVEL 4 · ACTIVE</span>
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          River level 1.9m (limit: 1.8m) · 22,400 people at risk · Sassoon General: 41 beds available · Sangam Bridge: CLOSED
+          {(() => {
+            const br = incident.infrastructure.find(item => item.type === 'Bridge');
+            return `River level ${incident.riverLevel}m (limit: ${incident.criticalRiverLevel}m) · ${incident.populationAtRisk.toLocaleString()} people at risk · ${incident.hospitals[0]?.name ?? 'Hospital'}: ${incident.hospitals[0]?.availableBeds ?? 0} beds available · ${br?.name ?? 'Bridge'}: ${br?.status ?? 'OPERATIONAL'}`;
+          })()}
         </div>
       </div>
 

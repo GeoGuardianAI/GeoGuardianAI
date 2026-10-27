@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import type { MarkerData } from './MarkerDetailDrawer';
+import { initialIncidentState, type IncidentState } from '../data/incidentState';
 
 interface WhatIfResult {
   active: boolean;
@@ -17,91 +18,159 @@ interface TacticalMapProps {
   onMarkerClick?: (marker: MarkerData) => void;
   onMapClick?: (lat: number, lng: number) => void;
   showHeatmap?: boolean;
+  incident?: IncidentState;
 }
 
-// ─── Marker data profiles ─────────────────────────────────
-const MARKER_DATA: MarkerData[] = [
-  {
-    id: 'hospital-1', lat: 18.5274, lng: 73.8633, icon: '🏥', label: 'Sassoon General Hospital',
-    type: 'Medical Facility', status: 'OPERATIONAL', statusColor: '#30d158', confidence: 98,
-    info: 'Primary medical hub. Available beds: 41 / 120. Distance: 2.4 km. Trauma team deployed via Ring Road NH-48 bypass.',
-    sensorReading: { value: '41', unit: 'available beds (78% occupancy)', trend: '✓ Receiving' },
-    roads: [
-      { name: 'Ring Road NH-48', status: 'OPEN', color: '#30d158' },
-      { name: 'Sangam Bridge Rd', status: 'BLOCKED', color: '#ff3b30' },
-    ],
-    hospitals: [
-      { name: 'Noble Hospital', distance: '2.1 km', color: '#ffb340' },
-      { name: 'Deenanath Mangeshkar', distance: '3.8 km', color: '#30d158' },
-    ],
-    riskParagraph: 'Sassoon General is located 2.4 km from Zone A at safe elevation above flood level. AI Recommendation: Prepare emergency beds under Rule 4.2 (40% bed reservation). Evidence: Flood SOP Rule 4.2.'
-  },
-  {
-    id: 'hospital-2', lat: 18.5135, lng: 73.8820, icon: '🏥', label: 'Noble Hospital',
-    type: 'Medical Facility', status: 'AT RISK', statusColor: '#ffb340', confidence: 87,
-    info: 'Capacity at 92%. Partial patient relocation active. Sangam Bridge closure cuts primary road access. Alternate route via NH-48.',
-    sensorReading: { value: '92', unit: '%  capacity', trend: '⚠ Critical' },
-    roads: [
-      { name: 'Sangam Bridge Rd', status: 'BLOCKED', color: '#ff3b30' },
-      { name: 'NH-48 Alternate', status: 'OPEN', color: '#30d158' },
-    ],
-    hospitals: [
-      { name: 'Sassoon General', distance: '2.1 km', color: '#30d158' },
-    ],
-    riskParagraph: 'Noble Hospital sits within the secondary flood impact zone. If river level rises above 2.2m, access will be completely cut. AI recommends immediate non-critical patient transfer to Sassoon General within 2 hours.'
-  },
-  {
-    id: 'bridge-1', lat: 18.5360, lng: 73.8562, icon: '🌉', label: 'Sangam Bridge',
-    type: 'Infrastructure', status: 'CRITICAL', statusColor: '#ff3b30', confidence: 97,
-    info: 'Severe structural crack detected by Drone Alpha-1. Bridge CLOSED. 8 rescue boats rerouted. Highway NH-48 is primary alternate.',
-    sensorReading: { value: '4.8', unit: 'cm crack', trend: '↑ Widening' },
-    roads: [
-      { name: 'Sangam Bridge Rd', status: 'CLOSED', color: '#ff3b30' },
-      { name: 'NH-48 Bypass', status: 'ACTIVE', color: '#30d158' },
-    ],
-    hospitals: [
-      { name: 'Sassoon General', distance: '1.4 km', color: '#30d158' },
-      { name: 'Noble Hospital', distance: '3.2 km', color: '#ffb340' },
-    ],
-    riskParagraph: 'Drone Alpha-1 confirms 4.8cm structural crack at pier 3. Load capacity reduced to 0%. Bridge is CLOSED to all traffic. Risk of partial collapse within 4-6 hours if river level exceeds 2.5m. Dispatch structural engineers immediately.'
-  },
-  {
-    id: 'sensor-1', lat: 18.5230, lng: 73.8490, icon: '📡', label: 'Mutha River Sensor',
-    type: 'IoT Sensor Node', status: 'ALERT', statusColor: '#ff3b30', confidence: 99,
-    info: 'Water level: 1.9m. Threshold: 1.8m. Rising at +0.1m per 5 minutes. Alert active since 10:02.',
-    sensorReading: { value: '1.9', unit: 'm level', trend: '↑ +0.1m/5min' },
-    roads: [
-      { name: 'Riverbank Road', status: 'FLOODED', color: '#ff3b30' },
-    ],
-    hospitals: [
-      { name: 'Sassoon General', distance: '0.8 km', color: '#30d158' },
-    ],
-    riskParagraph: 'Sensor reading has exceeded warning threshold by 0.1m. Rising trend confirmed by 3 consecutive readings. If current rate continues, 2.5m will be reached in 3 hours — triggering critical infrastructure failure.'
-  },
-  {
-    id: 'shelter-1', lat: 18.5400, lng: 73.8750, icon: '🏕️', label: 'Sports Complex Shelter',
-    type: 'Evacuation Shelter', status: 'ACTIVE', statusColor: '#30d158', confidence: 95,
-    info: '120 beds total. 62 occupied (52% capacity). Supplies: adequate for 72h. Access: clear via NH-48.',
-    sensorReading: { value: '62', unit: 'beds used', trend: '↑ Filling' },
-    roads: [
-      { name: 'NH-48', status: 'OPEN', color: '#30d158' },
-      { name: 'Bypass Road 7', status: 'OPEN', color: '#30d158' },
-    ],
-    hospitals: [
-      { name: 'Sassoon General', distance: '3.2 km', color: '#30d158' },
-    ],
-    riskParagraph: 'Primary evacuation shelter operating normally. Located at safe elevation above flood zone. Recommend pre-positioning 40 additional cots. At current intake rate, capacity will be reached within 6 hours.'
-  },
-  {
-    id: 'drone-1', lat: 18.5320, lng: 73.8600, icon: '🚁', label: 'Drone Alpha-1',
-    type: 'Aerial Asset', status: 'SURVEYING', statusColor: '#bf5af2', confidence: 93,
-    info: 'Altitude: 80m. Surveying Sangam Bridge & flood zone. Battery: 68%. ETA return: 22 minutes.',
-    sensorReading: { value: '80', unit: 'm altitude', trend: '✓ Stable' },
-    roads: [],
-    hospitals: [],
-    riskParagraph: 'Drone Alpha-1 is providing real-time video feed of the primary flood zone and Sangam Bridge structural status. Battery charge sufficient for 22 more minutes of operation. Recommend priority: confirm Noble Hospital access road status before returning.'
-  },
-];
+// ─── Dynamic marker data builder ─────────────────────────
+export const getMarkerData = (inc: IncidentState): MarkerData[] => {
+  const h1 = inc.hospitals[0];
+  const h2 = inc.hospitals[1] ?? inc.hospitals[0];
+  const bridge = inc.infrastructure.find(item => item.type === 'Bridge');
+  const sensor = inc.sensors[0];
+
+  return [
+    {
+      id: 'hospital-1',
+      lat: 18.5274,
+      lng: 73.8633,
+      icon: '🏥',
+      label: h1.name,
+      type: 'Medical Facility',
+      status: h1.status === 'Operational' ? 'OPERATIONAL' : 'AT RISK',
+      statusColor: h1.status === 'Operational' ? '#30d158' : '#ffb340',
+      confidence: 98,
+      info: `Primary medical hub. Available beds: ${h1.availableBeds} / ${h1.totalBeds}. Distance: ${h1.distance} km. Trauma team deployed via Ring Road NH-48 bypass.`,
+      sensorReading: {
+        value: String(h1.availableBeds),
+        unit: `available beds (${Math.round((h1.availableBeds / h1.totalBeds) * 100)}% available)`,
+        trend: '✓ Receiving',
+      },
+      roads: [
+        { name: 'Ring Road NH-48', status: 'OPEN', color: '#30d158' },
+        { name: `${bridge?.name ?? 'Sangam Bridge'} Rd`, status: 'BLOCKED', color: '#ff3b30' },
+      ],
+      hospitals: [
+        { name: h2.name, distance: `${h2.distance} km`, color: '#ffb340' },
+        { name: 'Deenanath Mangeshkar', distance: '3.8 km', color: '#30d158' },
+      ],
+      riskParagraph: `${h1.name} is located ${h1.distance} km from Zone A at safe elevation above flood level. AI Recommendation: Prepare emergency beds under Rule 4.2 (40% bed reservation). Evidence: Flood SOP Rule 4.2.`,
+    },
+    {
+      id: 'hospital-2',
+      lat: 18.5135,
+      lng: 73.8820,
+      icon: '🏥',
+      label: h2.name,
+      type: 'Medical Facility',
+      status: h2.status === 'Operational' ? 'OPERATIONAL' : 'AT RISK',
+      statusColor: h2.status === 'Operational' ? '#30d158' : '#ffb340',
+      confidence: 87,
+      info: `Capacity: ${Math.round(
+        ((h2.totalBeds - h2.availableBeds) / h2.totalBeds) * 100
+      )}% occupied. Partial patient relocation active. ${bridge?.name ?? 'Sangam Bridge'} closure cuts primary road access. Alternate route via NH-48.`,
+      sensorReading: {
+        value: String(Math.round(((h2.totalBeds - h2.availableBeds) / h2.totalBeds) * 100)),
+        unit: '% capacity',
+        trend: '⚠ Critical',
+      },
+      roads: [
+        { name: `${bridge?.name ?? 'Sangam Bridge'} Rd`, status: 'BLOCKED', color: '#ff3b30' },
+        { name: 'NH-48 Alternate', status: 'OPEN', color: '#30d158' },
+      ],
+      hospitals: [
+        { name: h1.name, distance: `${h1.distance} km`, color: '#30d158' },
+      ],
+      riskParagraph: `${h2.name} sits within the secondary flood impact zone. If river level rises above 2.2m, access will be completely cut. AI recommends immediate non-critical patient transfer to ${h1.name} within 2 hours.`,
+    },
+    {
+      id: 'bridge-1',
+      lat: bridge?.latitude ?? 18.5360,
+      lng: bridge?.longitude ?? 73.8562,
+      icon: '🌉',
+      label: bridge?.name ?? 'Sangam Bridge',
+      type: 'Infrastructure',
+      status: (bridge?.status ?? 'CRITICAL') as any,
+      statusColor: '#ff3b30',
+      confidence: bridge?.confidence ?? 97,
+      info: `${bridge?.description ?? 'Severe structural crack detected by drone. Bridge closed to traffic.'} ${inc.assets.rescueBoats.total} rescue boats rerouted. Highway NH-48 is primary alternate.`,
+      sensorReading: {
+        value: String(bridge?.sensorReading?.value ?? 4.8),
+        unit: bridge?.sensorReading?.unit ?? 'cm crack',
+        trend: bridge?.sensorReading?.trend ?? 'Widening',
+      },
+      roads: [
+        { name: `${bridge?.name ?? 'Sangam Bridge'} Rd`, status: 'CLOSED', color: '#ff3b30' },
+        { name: 'NH-48 Bypass', status: 'ACTIVE', color: '#30d158' },
+      ],
+      hospitals: [
+        { name: h1.name, distance: `${h1.distance} km`, color: '#30d158' },
+        { name: h2.name, distance: `${h2.distance} km`, color: '#ffb340' },
+      ],
+      riskParagraph: `Drone Alpha-1 confirms ${bridge?.sensorReading?.value ?? 4.8}${bridge?.sensorReading?.unit ?? 'cm'} structural crack at pier 3. Load capacity reduced to 0%. ${bridge?.name ?? 'Bridge'} is CLOSED to all traffic. Risk of partial collapse within 4-6 hours if river level exceeds 2.5m. Dispatch structural engineers immediately.`,
+    },
+    {
+      id: 'sensor-1',
+      lat: 18.5230,
+      lng: 73.8490,
+      icon: '📡',
+      label: sensor.name,
+      type: 'IoT Sensor Node',
+      status: (sensor.status ?? 'ALERT') as any,
+      statusColor: '#ff3b30',
+      confidence: 99,
+      info: `Water level: ${sensor.value}${sensor.unit}. Threshold: ${sensor.criticalValue}${sensor.unit}. Rising at ${sensor.trend}. Alert active.`,
+      sensorReading: {
+        value: String(sensor.value),
+        unit: `${sensor.unit} level`,
+        trend: `↑ ${sensor.trend}`,
+      },
+      roads: [
+        { name: 'Riverbank Road', status: 'FLOODED', color: '#ff3b30' },
+      ],
+      hospitals: [
+        { name: h1.name, distance: `${h1.distance} km`, color: '#30d158' },
+      ],
+      riskParagraph: `Sensor reading of ${sensor.value}${sensor.unit} has exceeded critical threshold of ${sensor.criticalValue}${sensor.unit} by +${(sensor.value - sensor.criticalValue).toFixed(1)}${sensor.unit}. Rising trend (${sensor.trend}) confirmed. If current rate continues, flood conditions will worsen.`,
+    },
+    {
+      id: 'shelter-1',
+      lat: 18.5400,
+      lng: 73.8750,
+      icon: '🏕️',
+      label: 'Sports Complex Shelter',
+      type: 'Evacuation Shelter',
+      status: 'ACTIVE',
+      statusColor: '#30d158',
+      confidence: 95,
+      info: '120 beds total. 62 occupied (52% capacity). Supplies: adequate for 72h. Access: clear via NH-48.',
+      sensorReading: { value: '62', unit: 'beds used', trend: '↑ Filling' },
+      roads: [
+        { name: 'NH-48', status: 'OPEN', color: '#30d158' },
+        { name: 'Bypass Road 7', status: 'OPEN', color: '#30d158' },
+      ],
+      hospitals: [
+        { name: h1.name, distance: `${h1.distance} km`, color: '#30d158' },
+      ],
+      riskParagraph: 'Primary evacuation shelter operating normally. Located at safe elevation above flood zone. Recommend pre-positioning 40 additional cots. At current intake rate, capacity will be reached within 6 hours.',
+    },
+    {
+      id: 'drone-1',
+      lat: 18.5320,
+      lng: 73.8600,
+      icon: '🚁',
+      label: 'Drone Alpha-1',
+      type: 'Aerial Asset',
+      status: 'SURVEYING',
+      statusColor: '#bf5af2',
+      confidence: 93,
+      info: `Altitude: 80m. Surveying ${bridge?.name ?? 'Sangam Bridge'} & flood zone. Battery: 68%. ETA return: 22 minutes.`,
+      sensorReading: { value: '80', unit: 'm altitude', trend: '✓ Stable' },
+      roads: [],
+      hospitals: [],
+      riskParagraph: `Drone Alpha-1 is providing real-time video feed of the primary flood zone and ${bridge?.name ?? 'Sangam Bridge'} structural status. Battery charge sufficient for 22 more minutes of operation. Recommend priority: confirm ${h2.name} access road status before returning.`,
+    },
+  ];
+};
 
 // ─── Flood polygon ────────────────────────────────────────
 const FLOOD_POLYGON: [number, number][] = [
@@ -114,7 +183,7 @@ const WHATIF_POLYGON: [number, number][] = [
 ];
 
 export const TacticalMap: React.FC<TacticalMapProps> = ({
-  whatIfResult, onMarkerClick, onMapClick, showHeatmap = true
+  whatIfResult, onMarkerClick, onMapClick, showHeatmap = true, incident = initialIncidentState
 }) => {
   const mapRef  = useRef<HTMLDivElement>(null);
   const mapInst = useRef<L.Map | null>(null);
@@ -146,7 +215,8 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
     }).addTo(map);
 
     // Add animated markers
-    MARKER_DATA.forEach(m => {
+    const markerData = getMarkerData(incident);
+    markerData.forEach(m => {
       const icon = L.divIcon({
         className: '',
         iconSize: [28, 28],
@@ -182,7 +252,7 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
     return () => {
       if (mapInst.current) { mapInst.current.remove(); mapInst.current = null; }
     };
-  }, []);
+  }, [incident]);
 
   // Heatmap layer
   useEffect(() => {
