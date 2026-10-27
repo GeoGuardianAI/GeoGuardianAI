@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.rescue.integrations.member1_detection.routes import (
     change_detection,
+    classification,
     detection,
     heatmap,
     segmentation,
@@ -79,6 +80,7 @@ app.include_router(routes_router)
 app.include_router(rescue_teams_router)
 app.include_router(shelters_router)
 app.include_router(upload.router)
+app.include_router(classification.router)
 app.include_router(detection.router)
 app.include_router(heatmap.router)
 app.include_router(segmentation.router)

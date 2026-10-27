@@ -34,6 +34,8 @@ const navigationItems = [
   { id: 'allocation', label: 'Resource Allocation', icon: '＋' },
 ]
 
+const acceptedImageTypes = new Set(['image/jpeg', 'image/png', 'image/tiff', 'image/geotiff'])
+
 function Icon({ children }) {
   return <span className="icon" aria-hidden="true">{children}</span>
 }
@@ -438,6 +440,15 @@ async function requestAuditEventPage(missionId, offset) {
 function App() {
   const [currentTime, setCurrentTime] = useState(() => new Date())
   const [activeModule, setActiveModule] = useState('dashboard')
+  const [selectedImage, setSelectedImage] = useState(null)
+  const [imagePreviewUrl, setImagePreviewUrl] = useState('')
+  const [imagePreviewError, setImagePreviewError] = useState(false)
+  const [imageUploadLoading, setImageUploadLoading] = useState(false)
+  const [imageUploadError, setImageUploadError] = useState('')
+  const [imageUploadResult, setImageUploadResult] = useState(null)
+  const [imageClassificationLoading, setImageClassificationLoading] = useState(false)
+  const [imageClassificationError, setImageClassificationError] = useState('')
+  const [imageClassificationResult, setImageClassificationResult] = useState(null)
   const [notice, setNotice] = useState('All systems are connected and ready for dispatch.')
   const [hospitals, setHospitals] = useState([])
   const [hospitalsLoading, setHospitalsLoading] = useState(true)
@@ -1722,6 +1733,107 @@ function App() {
     setMissionAllocationResult(null)
   }
 
+  useEffect(() => () => {
+    if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl)
+  }, [imagePreviewUrl])
+
+  const handleImageSelection = (event) => {
+    const file = event.currentTarget.files?.[0]
+    setImageUploadError('')
+    setImageUploadResult(null)
+    setImageClassificationError('')
+    setImageClassificationResult(null)
+    setImagePreviewError(false)
+    if (!file) {
+      setSelectedImage(null)
+      setImagePreviewUrl('')
+      return
+    }
+    const hasSupportedExtension = /\.(jpg|jpeg|png|tif|tiff)$/i.test(file.name)
+    if (!hasSupportedExtension || !acceptedImageTypes.has(file.type.toLowerCase())) {
+      setSelectedImage(null)
+      setImagePreviewUrl('')
+      setImageUploadError('Choose a JPG, PNG, or TIFF image with a supported image MIME type.')
+      event.currentTarget.value = ''
+      return
+    }
+    setImagePreviewUrl(URL.createObjectURL(file))
+    setSelectedImage(file)
+  }
+
+  const uploadSelectedImage = async (event) => {
+    event.preventDefault()
+    if (!selectedImage || imageUploadLoading) return
+    setImageUploadLoading(true)
+    setImageUploadError('')
+    setImageUploadResult(null)
+    setImageClassificationError('')
+    setImageClassificationResult(null)
+    const formData = new FormData()
+    formData.append('file', selectedImage)
+    try {
+      const response = await fetch('http://127.0.0.1:8000/upload-image', { method: 'POST', body: formData })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        const detail = typeof data?.detail === 'string' ? data.detail : typeof data?.message === 'string' ? data.message : `Image upload failed with status ${response.status}.`
+        throw new Error(detail)
+      }
+      if (typeof data?.asset_id !== 'string' || typeof data.filename !== 'string' || !Number.isFinite(data.bytes)) {
+        throw new Error('The upload service returned an incomplete image response.')
+      }
+      setImageUploadResult({ assetId: data.asset_id, filename: data.filename, bytes: data.bytes })
+    } catch (error) {
+      setImageUploadError(error instanceof TypeError
+        ? `Could not connect to the image upload service. ${error.message}`
+        : error instanceof Error ? error.message : 'The image could not be uploaded.')
+    } finally {
+      setImageUploadLoading(false)
+    }
+  }
+
+  const classifyUploadedImage = async () => {
+    if (!imageUploadResult?.assetId || imageClassificationLoading) return
+    setImageClassificationLoading(true)
+    setImageClassificationError('')
+    setImageClassificationResult(null)
+    try {
+      const response = await fetch('http://127.0.0.1:8000/classify-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asset_id: imageUploadResult.assetId }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        const detail = typeof data?.detail === 'string'
+          ? data.detail
+          : `Image classification failed with status ${response.status}.`
+        throw new Error(detail)
+      }
+      if (
+        typeof data?.predicted_class !== 'string'
+        || !Number.isFinite(data.confidence)
+        || typeof data.probabilities !== 'object'
+        || data.probabilities === null
+        || Array.isArray(data.probabilities)
+        || typeof data.note !== 'string'
+      ) {
+        throw new Error('The classification service returned an incomplete image response.')
+      }
+      setImageClassificationResult({
+        predictedClass: data.predicted_class,
+        confidence: data.confidence,
+        probabilities: data.probabilities,
+        note: data.note,
+      })
+    } catch (error) {
+      setImageClassificationError(error instanceof TypeError
+        ? `Could not connect to the image classification service. ${error.message}`
+        : error instanceof Error ? error.message : 'The image could not be classified.')
+    } finally {
+      setImageClassificationLoading(false)
+    }
+  }
+
   const navigateTo = (moduleId) => {
     setActiveModule(moduleId)
     document.getElementById(moduleId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1752,6 +1864,41 @@ function App() {
       <div className="workspace-shell">
         <div className="dashboard-content">
         <section className="welcome-row"><div><span className="eyebrow">COMMAND CENTER / OVERVIEW</span><h1>{greeting}, Commander.</h1><p>Real-time operational overview for the metropolitan response network.</p></div><div className="weather"><span className="weather-icon">☼</span><div><strong>28°C</strong><span>Clear skies · Visibility 12 km</span></div></div></section>
+        <section className="panel" aria-labelledby="image-upload-title" style={{ marginBottom: 22 }}>
+          <div className="panel-header"><div><span className="eyebrow">IMAGE INGESTION</span><h2 id="image-upload-title">Image Upload</h2></div></div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 18, alignItems: 'start' }}>
+            <form onSubmit={uploadSelectedImage} style={{ display: 'grid', gap: 12 }}>
+              <label htmlFor="dashboard-image-file" style={{ display: 'grid', gap: 7, color: 'var(--muted)', font: "9px 'DM Mono', monospace" }}>Select one JPG, PNG, or TIFF image
+                <input id="dashboard-image-file" type="file" accept=".jpg,.jpeg,.png,.tif,.tiff,image/jpeg,image/png,image/tiff,image/geotiff" onChange={handleImageSelection} disabled={imageUploadLoading} style={{ width: '100%', color: 'var(--text)', font: "10px 'DM Mono', monospace" }} />
+              </label>
+              {selectedImage && <span className="muted" style={{ overflowWrap: 'anywhere' }}>Selected: {selectedImage.name}</span>}
+              <button className="inventory-allocation-button" type="submit" disabled={!selectedImage || imageUploadLoading} style={{ justifySelf: 'start' }}>{imageUploadLoading ? 'Uploading image...' : 'Upload Image'}</button>
+              {imageUploadError && <span className="inventory-feedback inventory-feedback-error" role="alert">{imageUploadError}</span>}
+              {imageUploadResult && <div className="inventory-feedback inventory-feedback-success" role="status" style={{ overflowWrap: 'anywhere' }}>
+                <div>Image uploaded successfully.</div>
+                <div>Asset ID: {imageUploadResult.assetId}</div>
+                <div>Filename: {imageUploadResult.filename}</div>
+                <div>Size: {imageUploadResult.bytes.toLocaleString()} bytes</div>
+              </div>}
+              <button className="inventory-allocation-button" type="button" onClick={classifyUploadedImage} disabled={!imageUploadResult || imageClassificationLoading} style={{ justifySelf: 'start' }}>{imageClassificationLoading ? 'Classifying image...' : 'Classify Image'}</button>
+              {imageClassificationError && <span className="inventory-feedback inventory-feedback-error" role="alert">{imageClassificationError}</span>}
+              {imageClassificationResult && <div className="inventory-feedback inventory-feedback-success" role="status" style={{ overflowWrap: 'anywhere' }}>
+                <div>Predicted class: {imageClassificationResult.predictedClass}</div>
+                <div>Confidence: {(imageClassificationResult.confidence * 100).toFixed(2)}%</div>
+                <div>Class probabilities:</div>
+                {Object.entries(imageClassificationResult.probabilities).map(([className, probability]) => (
+                  <div key={className}>{className}: {(probability * 100).toFixed(2)}%</div>
+                ))}
+                <div>{imageClassificationResult.note}</div>
+              </div>}
+            </form>
+            <div aria-live="polite" style={{ minWidth: 0 }}>
+              {selectedImage
+                ? <><span className="muted" style={{ overflowWrap: 'anywhere' }}>{selectedImage.name}</span>{imagePreviewError ? <span className="muted" role="status">Preview is unavailable in this browser for this image format.</span> : imagePreviewUrl && <img src={imagePreviewUrl} alt={`Preview of ${selectedImage.name}`} onError={() => setImagePreviewError(true)} style={{ display: 'block', maxWidth: '100%', maxHeight: 180, marginTop: 8, objectFit: 'contain', objectPosition: 'left center' }} />}</>
+                : <span className="muted">Choose an image to preview it before upload.</span>}
+            </div>
+          </div>
+        </section>
         <nav className="module-nav" aria-label="Command center sections">{navigationItems.map((item) => <button key={item.id} type="button" className={activeModule === item.id ? 'active' : ''} aria-current={activeModule === item.id ? 'location' : undefined} onClick={() => navigateTo(item.id)}><Icon>{item.icon}</Icon><span>{item.label}</span></button>)}</nav>
         <section id="dashboard" className="page-section dashboard-section"><section className="metrics-grid" aria-label="Operational summary"><MetricCard label="Active Missions" value="12" detail="3 critical priority" icon="⌁" tone="red" /><MetricCard label="Rescue Teams" value="08" detail="of 14 total teams" icon="♙" tone="teal" /><MetricCard label="Available Vehicles" value="23" detail="4 currently deployed" icon="▣" tone="blue" /><MetricCard label="Emergency Resources" value="94%" detail="Readiness level" icon="◈" tone="amber" /></section>
         <div className="command-grid"><MissionStatusPanel ranking={missionRanking} loading={missionRankingLoading} error={missionRankingError} updatingId={missionUpdatingId} operationInProgress={Boolean(missionAllocationLoading || releasingAllocationId || cancellingAllocationId)} feedback={missionStatusFeedback} onRefresh={() => Promise.all([fetchMissions(), fetchMissionRanking()])} onStatusChange={updateMissionStatus} /><section className="panel map-panel"><PanelHeader eyebrow="GEOSPATIAL VIEW" title="Emergency Response Map" /><div className="map-placeholder"><EmergencyMap hospitals={hospitals} vehicles={vehicles} /></div><div className="map-footer"><span><i className="legend-dot critical" /> Active incidents</span><span><i className="legend-dot hospital" /> Hospitals</span><span><i className="legend-dot team" /> Rescue teams</span><span><i className="legend-dot vehicle" /> Emergency vehicles</span></div></section></div>
